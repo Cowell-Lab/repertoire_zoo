@@ -9,7 +9,7 @@ See README.md for details on usage.
 from setuptools import setup, find_packages
 
 setup(
-    name='repertoire-zoo',
+    name='repertoire_zoo',
     version='0.0.1',
     description='A set of python modules for repertoire analysis.',
     author='Samuel Wollenburg',
@@ -20,7 +20,7 @@ setup(
     install_requires=[
         'airr',
         'matplotlib',
-        'numpy'
+        'numpy',
         'pandas',
         'pycirclize',
         'seaborn',
