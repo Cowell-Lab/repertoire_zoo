@@ -106,6 +106,45 @@ def read_repertoire_group_info_airr(
 
     return df
 
+def load_gene_usage_data(
+        repcalc_dir:str,
+        repertoire_id:str,
+        processing_stage:str,
+        call_type:str='v_call',
+        level:str='gene',
+        mode:str='proportion',
+        productive:bool=True
+    ) -> pd.DataFrame:
+    """
+    Load gene usage data for a single repertoire.
+
+    Parameters
+    ----------
+    repcalc_dir : str
+        - RepCalc base directory path.
+    repertoire_id : str
+        - Repertoire ID use to determine file name
+    processing_stage : str
+        - The middle part of the filename path
+    call_type : str
+        - The type of call. Can be `v_call`, `d_call`, `j_call`. Default: `v_call`.
+    level : str
+        - Type of gene level information. Can be `allele`, `gene`, `subgroup`.
+        Default: `gene`.
+    mode : str
+        - Can be `exists`, `proportion`, or `unique`. Default: `proportion`.
+    productive: bool
+        - Only productive rearrangements (True), both productive and non-productive (False)
+
+    Returns
+    -------
+    df : pd.DataFrame
+    """
+    path = f"{repcalc_dir}{repertoire_id}.{processing_stage}.{call_type}.tsv"
+    df = pd.read_csv(path, sep='\t')
+    df = df[(df['level']==level) & (df['mode']==mode) & (df['productive']==productive)]
+    return df
+
 def load_gene_usage_group_data(
         repcalc_dir:str,
         groups:list,
@@ -116,7 +155,7 @@ def load_gene_usage_group_data(
         productive:bool=True
     ) -> pd.DataFrame:
     """
-    Load and preprocess data from files for multiple groups.
+    Load gene usage statistical data for a single group.
 
     Parameters
     ----------
@@ -154,6 +193,46 @@ def load_gene_usage_group_data(
     df_combined = df_combined.reset_index(drop=True)
 
     return df_combined
+
+def load_gene_usage_data_for_group(
+        repcalc_dir:str,
+        repertoire_group:dict,
+        processing_stage:str,
+        call_type:str='v_call',
+        level:str='gene',
+        mode:str='proportion',
+        productive:bool=True
+    ) -> pd.DataFrame:
+    """
+    Load gene usage data for each repertoire in a given group.
+
+    Parameters
+    ----------
+    repcalc_dir : str
+        - RepCalc base directory path.
+    repertoire_group : dict
+        - Repertoire group object with list of repertoires
+    processing_stage : str
+        - The middle part of the filename path
+    call_type : str
+        - The type of call. Can be `v_call`, `d_call`, `j_call`. Default: `v_call`.
+    level : str
+        - Type of gene level information. Can be `allele`, `gene`, `subgroup`.
+        Default: `gene`.
+    mode : str
+        - Can be `exists`, `proportion`, or `unique`. Default: `proportion`.
+    productive: bool
+        - Only productive rearrangements (True), both productive and non-productive (False)
+
+    Returns
+    -------
+    dfs : list of pd.DataFrame, one for each repertoire in group
+    """
+    dfs = []
+    for rep in repertoire_group['repertoires']:
+        df = load_gene_usage_data(repcalc_dir, rep['repertoire_id'], processing_stage, call_type, level, mode, productive)
+        dfs.append(df)
+    return dfs
 
 def load_and_prepare_data_subjects(
         repcalc_dir:str,
