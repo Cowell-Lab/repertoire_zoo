@@ -28,8 +28,10 @@ import pandas as pd
 from pycirclize import Circos
 import seaborn as sns
 
-def plot_duplicate_frequency_average(
+def plot_gene_usage_groups(
         df_combined: pd.DataFrame,
+        relative:bool=True,
+        abundance:bool=True,
         colors:list=None,
         figsize:tuple=(16,8),
         title:str=None
@@ -42,6 +44,10 @@ def plot_duplicate_frequency_average(
     df_combined : pd.DataFrame
         - A Pandas DataFrame with columns `gene`, `duplicate_frequency_avg`,
         `duplicate_frequency_std`, `condition`.
+    relative : bool
+        - Flag to plot either relative frequencies (True) or absolute counts (False).
+    abundance : bool
+        - Flag to plot either abundance (True) or sequence (False) values.
     colors : list
         - A list of colors for each condition. (optional, Default: `None` uses a
         predefined color palette. This currently supports up to 5 groups).
@@ -75,8 +81,24 @@ def plot_duplicate_frequency_average(
 
         positions = x + i * bar_width
 
-        mean = cond_data['duplicate_frequency_avg']
-        std = cond_data['duplicate_frequency_std']
+        if relative:
+            if abundance:
+                ylabel = 'Average Duplicate Frequency'
+                mean = cond_data['duplicate_frequency_avg']
+                std = cond_data['duplicate_frequency_std']
+            else:
+                ylabel = 'Average Sequence Frequency'
+                mean = cond_data['sequence_frequency_avg']
+                std = cond_data['sequence_frequency_std']
+        else:
+            if abundance:
+                ylabel = 'Average Duplicate Count'
+                mean = cond_data['duplicate_count_avg']
+                std = cond_data['duplicate_count_std']
+            else:
+                ylabel = 'Average Sequence Count'
+                mean = cond_data['sequence_count_avg']
+                std = cond_data['sequence_count_std']
         lower_error = np.minimum(std, mean)
         upper_error = std
         asymmetric_error = [lower_error, upper_error]
@@ -92,7 +114,7 @@ def plot_duplicate_frequency_average(
 
     ax.set_xticks(x + bar_width * (n_groups - 1) / 2)
     ax.set_xticklabels(genes, rotation=90)
-    ax.set_ylabel('Average Duplicate Frequency')
+    ax.set_ylabel(ylabel)
     ax.set_xlabel('Gene Family')
     ax.grid(True)
     ax.legend(title='Condition', loc='upper left', bbox_to_anchor=(1, 1))

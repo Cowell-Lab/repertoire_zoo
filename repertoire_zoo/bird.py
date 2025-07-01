@@ -106,13 +106,14 @@ def read_repertoire_group_info_airr(
 
     return df
 
-def load_and_prepare_data_groups(
+def load_gene_usage_group_data(
         repcalc_dir:str,
         groups:list,
+        processing_stage:str,
         call_type:str='v_call',
         level:str='gene',
         mode:str='proportion',
-        processing_stage:str='.igblast.makedb.allele.clone.group.'
+        productive:bool=True
     ) -> pd.DataFrame:
     """
     Load and preprocess data from files for multiple groups.
@@ -141,9 +142,9 @@ def load_and_prepare_data_groups(
     """
     dfs = []
     for group_id, condition_name in groups:
-        path = f"{repcalc_dir}{group_id}{processing_stage}{call_type}.tsv"
+        path = f"{repcalc_dir}{group_id}.{processing_stage}.group.{call_type}.tsv"
         df = pd.read_csv(path, sep='\t')
-        df = df[(df['level']==level) & (df['mode']==mode) & df['productive']]
+        df = df[(df['level']==level) & (df['mode']==mode) & (df['productive']==productive)]
         df.loc[:,['gene', 'duplicate_frequency_avg', 'duplicate_frequency_std']]
         df['condition'] = condition_name
         dfs.append(df)
