@@ -19,11 +19,11 @@ import airr
 import numpy as np
 import pandas as pd
 
-def read_sample_info_airr(
+def read_repertoire_info_airr(
         path:str='repertoires.airr.json'
     ) -> pd.DataFrame:
     """
-    Creates a Pandas DataFrame containing sample information from the repertoire file.
+    Creates a Pandas DataFrame containing repertoire information from the AIRR JSON metadata file.
 
     Parameters
     ----------
@@ -93,7 +93,7 @@ def read_repertoire_group_info_airr(
         {
             'repertoire_group_id':obj['repertoire_group_id'], 
             'name':obj['repertoire_group_name'],
-            'description':obj['description'],
+            'description':obj.get('description'),
             'repertoires':obj['repertoires'],
             'repertoire_count':len(obj['repertoires'])
         }
@@ -289,6 +289,18 @@ def load_and_prepare_data_vj_combo(
     df = df[(df['level']==level) & (df['mode']==mode) & (df['productive']==productive)]
     cols = ['v_level', 'j_level', 'duplicate_frequency_avg', 'duplicate_frequency_std']
     return df.loc[:, cols]
+
+def load_diversity_data(data_dir, repertoire_id, processing_stage):
+    filename = f"{data_dir}{repertoire_id}.{processing_stage}.diversity.tsv"
+    df = pd.read_csv(filename, sep='\t')
+    return df
+
+def load_diversity_group_data(data_dir, repertoire_group, processing_stage):
+    dfs = []
+    for rep in repertoire_group['repertoires']:
+        df = load_diversity_data(data_dir, rep['repertoire_id'], processing_stage)
+        dfs.append(df)
+    return dfs
 
 def load_and_prepare_mutation_data(
         mutation_data_dir:str,

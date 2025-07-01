@@ -282,6 +282,14 @@ def plot_vj_chord_diagram(
     ax = fig.gca()  # get current axes (should be polar)
     return fig, ax
 
+def plot_diversity_curve(df, figsize=(16,8)):
+    fig, ax = plt.subplots(figsize=(16,8))
+    ax.plot(df['q'], df['d'])
+    ax.set_xscale('log')
+    ax.grid(axis='x')
+    ax.fill_between(df['q'], df['d_lower'], df['d_upper'])
+    return fig, ax
+
 def plot_mutational_hedgehog(
         df:pd.DataFrame,
         pad:int=5,
