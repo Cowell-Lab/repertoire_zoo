@@ -1,0 +1,108 @@
+#
+# VDJServer Visualization API specification
+#
+# VDJServer Analysis Portal
+# VDJServer Web API
+# https://vdjserver.org
+#
+# Copyright (C) 2025 The University of Texas Southwestern Medical Center
+#
+# Author: Scott Christley <scott.christley@utsouthwestern.edu>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+# This API is not designed to be publicly accessible.
+#
+# It is designed to be an internal API service that is
+# called by the VDJServer Web API.
+#
+# This API does not perform any security checks. It is assumed
+# that the VDJServer Web API will perform those checks.
+#
+
+openapi: "3.0.0"
+
+info:
+  title: VDJServer Visualization API
+  version: '1.0.0'
+  contact:
+    name: VDJServer
+    url: 'https://vdjserver.org/'
+    email: vdjserver@utsouthwestern.edu
+  description: >
+    API service to generate images for the VDJServer analysis portal.
+
+servers:
+  - url: http://localhost:8080/api/visualize/v1
+    description: Internal server
+    variables:
+      basePath:
+        default: /api/visualize/v1
+
+paths:
+  /greeting/{name}:
+    post:
+      summary: Generate greeting
+      description: Generates a greeting message.
+      operationId: image_server.post_greeting
+      responses:
+        '200':
+          description: greeting response
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "hello dave!"
+      parameters:
+        - name: name
+          in: path
+          description: Name of the person to greet.
+          required: true
+          schema:
+            type: string
+            example: "dave"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+
+  /gene_usage:
+    post:
+      description: Generates gene usage visualization.
+      operationId: image_server.gene_usage
+      responses:
+        '200':
+          description: visualization response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  image_path:
+                    type: string
+                    example: "123.png"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data_path:
+                  type: string
+                repertoire_id:
+                  type: string
+                processing_stage:
+                  type: string
