@@ -45,7 +45,7 @@ info:
     API service to generate images for the VDJServer analysis portal.
 
 servers:
-  - url: http://localhost:8080/api/visualize/v1
+  - url: http://localhost:8000/api/visualize/v1
     description: Internal server
     variables:
       basePath:

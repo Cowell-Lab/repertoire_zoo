@@ -130,7 +130,10 @@ def plot_duplicate_frequency(
         df_combined: pd.DataFrame,
         colors:list=None,
         figsize:tuple=(16,8),
-        title:str=None
+        title:str=None,
+        hue = None,
+        hue_order = None,
+        palette = None
     ) -> tuple[Figure, Axes]:
     """
     Plot grouped bar chart with error bars from combined dataframe.
@@ -153,45 +156,29 @@ def plot_duplicate_frequency(
     fig, ax : tuple
         - Matplotlib figure and axes objects
     """
-
-    genes = df_combined['gene'].unique()
-    conditions = df_combined['tissue'].unique()
-
-    if colors is None:
-        ## Add more colors if needed
-        default_palette = ['#66c2a5', '#fc8d62', '#8da0cb', '#e78ac3', '#a6d854']
-        colors = default_palette[:len(conditions)]
-
-    n_groups = len(conditions)
-    bar_width = 0.8 / n_groups
-    x = np.arange(len(genes))
-
     fig, ax = plt.subplots(figsize=figsize)
 
-    for i, cond in enumerate(conditions):
-        cond_data = df_combined[df_combined['tissue'] == cond]
-        cond_data = cond_data.set_index('gene').reindex(genes, fill_value=0).reset_index()
-        positions = x + i * bar_width
-        freq_val = cond_data['duplicate_frequency']
-        ax.bar(positions,
-               freq_val,
-               bar_width,
-               label=cond,
-               yerr=None,
-               capsize=4,
-               color=colors[i],
-               error_kw={'elinewidth':1, 'ecolor':'black'})
+    # Determine hue order
+    if hue_order is None and isinstance(palette, dict):
+        hue_order = list(palette.keys())
+    if hue is not None and palette is None:
+        palette = 'Set2'
 
-    ax.set_xticks(x + bar_width * (n_groups - 1) / 2)
-    ax.set_xticklabels(genes, rotation=90)
-    ax.set_ylabel('Duplicate Frequency')
-    ax.set_xlabel('Gene')
+    sns.barplot(
+        data=df_combined,
+        x='gene',
+        y='duplicate_frequency',
+        hue=hue,
+        palette=palette,
+        hue_order=hue_order
+    )
+
+    ax.tick_params(axis='x', rotation=90)
     ax.grid(True)
-    ax.legend(title='Tissue', loc='upper left', bbox_to_anchor=(1, 1))
+    # ax.legend(title='Tissue', loc='upper left', bbox_to_anchor=(1, 1))
 
-    if title is None:
-        title = 'TCR Gene Usage: ' + ' vs '.join(conditions)
-    ax.set_title(title)
+    if title:
+        ax.set_title(title)
 
     plt.tight_layout()
     return fig, ax
