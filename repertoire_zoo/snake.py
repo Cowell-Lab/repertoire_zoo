@@ -33,8 +33,10 @@ def create_time_point_graph(
 
     for rep in repertoires['Repertoire']:
         if rep['subject']['subject_id'] in subj_IDs:
-            new_df = pd.DataFrame({'id' : [rep['subject']['subject_id']], 
-                                'timepoint' : [rep['sample'][0]['collection_time_point_reference']]})
+            new_df = pd.DataFrame({
+                'id' : [rep['subject']['subject_id']], 
+                'timepoint' : [rep['sample'][0]['collection_time_point_reference']]
+            })
             df = pd.concat([df, new_df], ignore_index=True)
 
     df = df.sort_values(by=['id', 'timepoint'], ignore_index=True)
