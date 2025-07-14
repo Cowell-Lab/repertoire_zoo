@@ -127,7 +127,9 @@ def plot_gene_usage_groups(
     return fig, ax
 
 def plot_duplicate_frequency(
-        df_combined: pd.DataFrame,
+        df_combined:pd.DataFrame,
+        average:bool=True,
+        datapoints:bool=True,
         colors:list=None,
         figsize:tuple=(16,8),
         title:str=None,
@@ -143,6 +145,10 @@ def plot_duplicate_frequency(
     df_combined : pd.DataFrame
         - A Pandas DataFrame with columns `gene`, `duplicate_frequency_avg`,
         `duplicate_frequency_std`, `condition`
+    average : bool
+        - Displays the average and the error bars. (Default: `True`.)
+    datapoints : bool
+        - Displays the data points on the bars. (Default: `True`.)
     colors : list
         - A list of colors for each condition. (optional, Default: `None`
         uses a predefined color palette. This currently supports up to 5 groups)
