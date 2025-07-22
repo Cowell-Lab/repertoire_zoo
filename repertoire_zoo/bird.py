@@ -176,15 +176,15 @@ def load_gene_usage_group_data(
     Returns
     -------
     df_combined : pd.DataFrame
-        - Combined DataFrame with columns: `gene`, `duplicate_frequency_avg`, 
-        `duplicate_frequency_std`, `condition`.
+        - Combined DataFrame with columns: `gene`, `duplicate_frequency`, 
+        `duplicate_frequency_avg`, `duplicate_frequency_std`, `condition`.
     """
     dfs = []
     for group_id, condition_name in groups:
         path = f"{repcalc_dir}{group_id}.{processing_stage}.group.{call_type}.tsv"
         df = pd.read_csv(path, sep='\t')
         df = df[(df['level']==level) & (df['mode']==mode) & (df['productive']==productive)]
-        df.loc[:,['gene', 'duplicate_frequency_avg', 'duplicate_frequency_std']]
+        df = df.loc[:,['gene', 'duplicate_frequency', 'duplicate_frequency_avg', 'duplicate_frequency_std']]
         df['condition'] = condition_name
         dfs.append(df)
 
@@ -332,7 +332,7 @@ def load_and_prepare_data_vj_combo(
         combo_type:str='vj_combo',
         level:str='subgroup|subgroup',
         mode:str='proportion', 
-        productive:str='TRUE',
+        productive:str=True,
         processing_stage:str='.igblast.makedb.allele.clone.group.'
     ) -> pd.DataFrame:
     """
@@ -347,12 +347,12 @@ def load_and_prepare_data_vj_combo(
     combo_type : str
         - The VDJ combination. (Default `vj_combo`.)
     level : str
-        - The type of gene level information. Can be `allele`, `gene`, `subgroup`.
+        - The type of gene level information. Can be `allele|allele`, `gene|gene`, `subgroup|subgroup`.
         Default: `subgroup|subgroup`.
     mode : str
         - Can be `exists`, `proportion`, `unique`. Default: `proportion`.
     productive : str
-        - Filter for productive contigs. Can be `TRUE` or `FALSE`. (Default: `TRUE`.)
+        - Filter for productive contigs. Can be `True` or `False`. (Default: `True`.)
     processing_stage : str
         - The middle part of the filename path. Default: `.igblast.makedb.allele.clone.group.`
     
@@ -382,9 +382,11 @@ def load_diversity_group_data(data_dir, repertoire_group, processing_stage):
         dfs.append(df)
     return dfs
 
+# TO DO: Check if group_name is actually a name or an ID. 
+# Using repcalc files, I noticed that there is group_id
 def load_and_prepare_mutation_data(
         mutation_data_dir:str,
-        group_name:str,
+        group_id:str,
         trim_codons:int=16,
         processing_stage:str='gene.mutations'
     ) -> pd.DataFrame:
@@ -395,7 +397,7 @@ def load_and_prepare_mutation_data(
     ----------
     mutation_data_dir : str
         - Path to mutation data directory.
-    group_name : str
+    group_id : str
         - The name of the group.
     trim_codons : int
         - The number of codons to trim. (Default: `16`.)
@@ -409,10 +411,10 @@ def load_and_prepare_mutation_data(
         `group`, `value`, `se`, `se_start`, `se_end`.
     """
     # --- Load the data ---
-    file_path = f"{mutation_data_dir}{processing_stage}+\
-        .repertoire_group.frequency.mutational_report.csv"
+    file_path = f"{mutation_data_dir}{processing_stage}.repertoire_group.frequency.mutational_report.csv"
     #read the mutation data file
     group_muts = pd.read_csv(file_path, index_col='repertoire_group_id')
+
     # --- Helper functions ---
     def add_suffix(cols, suffix):
         return [f"{col}_{suffix}" for col in cols]
@@ -433,9 +435,9 @@ def load_and_prepare_mutation_data(
     pos_cols_r_aa_N = add_suffix(pos_cols_r_aa, "N")
 
     # # --- Extract relevant data ---
-    avg = group_muts.loc[group_name, pos_cols_r_aa_avg]
-    std = group_muts.loc[group_name, pos_cols_r_aa_std]
-    n = group_muts.loc[group_name, pos_cols_r_aa_N]
+    avg = group_muts.loc[group_id, pos_cols_r_aa_avg]
+    std = group_muts.loc[group_id, pos_cols_r_aa_std]
+    n = group_muts.loc[group_id, pos_cols_r_aa_N]
     np.seterr(divide='ignore', invalid='ignore')
     # can not divide if the index does not match (below)
     se = pd.Series((std.values / np.sqrt(n.values)), index = std.index)
