@@ -127,66 +127,121 @@ def plot_gene_usage_groups(
     return fig, ax
 
 def plot_duplicate_frequency(
-        df_combined:pd.DataFrame,
-        average:bool=True,
+        df:pd.DataFrame,
+        average:bool=False,
         datapoints:bool=True,
-        colors:list=None,
         figsize:tuple=(16,8),
         title:str=None,
-        hue = None,
-        hue_order = None,
-        palette = None
+        hue=None,
+        hue_order=None,
+        palette:dict=None,
+        threshold:float=None,
+        ylim:tuple[float,float]=(None,None),
+        ax:Axes=None,
+        split:bool=False
     ) -> tuple[Figure, Axes]:
     """
     Plot grouped bar chart with error bars from combined dataframe.
 
     Parameters
     ----------
-    df_combined : pd.DataFrame
+    df : pd.DataFrame
         - A Pandas DataFrame with columns `gene`, `duplicate_frequency_avg`,
         `duplicate_frequency_std`, `condition`
     average : bool
         - Displays the average and the error bars. (Default: `True`.)
     datapoints : bool
         - Displays the data points on the bars. (Default: `True`.)
-    colors : list
-        - A list of colors for each condition. (optional, Default: `None`
+    palette : list
+        - A list of colors for each condition. (optional, Default: `None`.)
         uses a predefined color palette. This currently supports up to 5 groups)
     figsize : tuple
         - The figure size. (Default:`(16,8)`)
     title : str
         - The plot's title (optional, Default: `None`)
+    threshold : float
+        - Define a duplicate frequency threshold to apear. Values are inclusive. (Default: `None`.)
+    ylim : tuple[float, float]
+        - Define the y-axim limit. If a tuple is provided, then read as [min, max]. 
+        It is also possible to define the tuple using `None` to denote automatic limits. 
+        (Default: `(None, None)`.)
+    ax : Axes
+        - A `matplotlib.axes.Axes` object to plot with. (Deafult: `None`.)
 
     Returns
     -------
     fig, ax : tuple
         - Matplotlib figure and axes objects
     """
-    fig, ax = plt.subplots(figsize=figsize)
+    external_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.get_figure()
+        external_ax = True
+
 
     # Determine hue order
     if hue_order is None and isinstance(palette, dict):
         hue_order = list(palette.keys())
     if hue is not None and palette is None:
         palette = 'Set2'
+    if hue is None:
+        hue='gene'
 
-    sns.barplot(
-        data=df_combined,
-        x='gene',
-        y='duplicate_frequency',
-        hue=hue,
-        palette=palette,
-        hue_order=hue_order
-    )
+    # reduce df by threshold
+    if threshold is not None and isinstance(threshold, float):
+        df = df[df['duplicate_frequency']>=threshold]
+
+    
+
+    if not split:
+        sns.barplot(
+            data=df,
+            x='gene',
+            y='duplicate_frequency',
+            hue=hue,
+            legend=False,
+            palette=palette,
+            hue_order=hue_order,
+            errorbar=None,
+            ax=ax
+        ) 
+    else:
+        sns.barplot(
+            data=df,
+            x='gene',
+            y='duplicate_frequency',
+            hue='condition',
+            errorbar=None,
+            ax=ax
+        )
+        ax.legend(title='Category', loc='upper left', fontsize='small')
+
+    # sns.pointplot(
+    #     data=df,
+    #     linestyle='none',
+    #     x='gene',
+    #     y='duplicate_frequency',
+    #     color='black',
+    #     zorder=1
+    # )
 
     ax.tick_params(axis='x', rotation=90)
-    ax.grid(True)
+    # ax.grid(True)
     # ax.legend(title='Tissue', loc='upper left', bbox_to_anchor=(1, 1))
 
     if title:
-        ax.set_title(title)
+        ax.set_title(title, size=20)
+    
+    if ylim[0] is not None and isinstance(ylim[0], float):
+        plt.ylim(bottom=ylim[0])
+    if ylim[1] is not None and isinstance(ylim[1], float):
+        plt.ylim(top=ylim[1])
 
-    plt.tight_layout()
+    if external_ax:
+        plt.tight_layout()
+
     return fig, ax
 
 def plot_junction_aa_length(
@@ -196,7 +251,9 @@ def plot_junction_aa_length(
         hue_col:str='condition',
         palette:str='Set1',
         figsize:tuple[int,int]=(18, 8),
-        log_scale:bool=False
+        log_scale:bool=False,
+        aa_range:tuple[int,int]=(6, 29),
+        ax:Axes=None
     ) -> tuple[Figure, Axes]:
     """
     Plot grouped bar chart with error bars from combined dataframe.
@@ -218,18 +275,30 @@ def plot_junction_aa_length(
         - The figure size. (Default:`(18,8)`)
     log_scale : bool
         - Place the y axis into a log scale. (Default: `False`)
+    aa_range : tuple[int,int]
+        - The range of amino acid positions to display. (Default: `(6,29)`.)
     Returns
     -------
     fig, ax : tuple
         - Matplotlib figure and axes objects
     """
-
-    fig, ax = plt.subplots(figsize=figsize)
+    external_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.get_figure()
+        external_ax = True
+    
     sns.barplot(data=df, x=x_col, y=y_col, hue=hue_col, palette=palette, ax=ax)
     if log_scale:
         ax.set_yscale('log')
     plt.xticks(rotation=90)
     plt.tight_layout()
+    ax.set_xlim(aa_range[0], aa_range[1])
+
+    if external_ax:
+        plt.tight_layout()
+
     return fig, ax
 
 def plot_vj_chord_diagram(
@@ -239,7 +308,9 @@ def plot_vj_chord_diagram(
         space:int=2,
         cmap:str='Set1',
         figsize:tuple=(12, 12),
-        max_links:int=None
+        max_links:int=None,
+        title:str=None,
+        ax:Axes=None
     ) -> tuple[Figure, Axes]:
     """
     Plot the VJ Chord Diagram.
@@ -260,21 +331,33 @@ def plot_vj_chord_diagram(
         - The size of the figure. (Default: `(12, 12)`.)
     max_links : int
         - The maximum nunber of links. (Default: `None`.)
+    title : str
+        - The title of the plot. (Default: `None`.)
     
     Returns
     -------
     fig, ax : tuple[Figure, Axes]
         - Matplotlib Figure and Axes objects.
     """
+    external_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize, subplot_kw={"projection": "polar"})
+    else:
+        fig = ax.get_figure()
+        external_ax = True
+
     # Optionally reduce overcrowding
     if max_links and len(df) > max_links: ## Limit to top N V–J links
         df = df.nlargest(max_links, freq_col)
-    nodes = sorted(set(df["v_level"]).union(set(df["j_level"])))
+
     # Build matrix
+    nodes = sorted(set(df["v_level"]).union(set(df["j_level"])))
     matrix_df = pd.DataFrame(0, index=nodes, columns=nodes, dtype=float)
+    
     for _, row in df.iterrows():
         v, j = row["v_level"], row["j_level"]
         matrix_df.loc[v, j] = row[freq_col]
+    
     circos = Circos.chord_diagram(
         matrix_df,
         space=space,  # more spacing
@@ -288,13 +371,28 @@ def plot_vj_chord_diagram(
             direction=0,
             ec="white",
             lw=0.4),
-        ticks_kws = dict(
+        ticks_kws=dict(
             label_size=8,
             label_orientation='vertical')
     )
 
-    fig = circos.plotfig(figsize=figsize)
-    ax = fig.gca()  # get current axes (should be polar)
+    if title:
+        if external_ax:
+            text_size = 15
+        else:
+            text_size = 20
+        circos.text(
+            title,
+            size=text_size,
+            deg=0,
+            r=140
+        )
+
+    if not external_ax:
+        plt.tight_layout()
+
+    circos.plotfig(figsize=figsize, ax=ax)
+
     return fig, ax
 
 def plot_diversity_curve(df, figsize=(16,8)):
@@ -312,7 +410,8 @@ def plot_mutational_hedgehog(
         start:float=0.05,
         pallete:str='tab20',
         figsize:tuple[int,int]=(10, 10),
-        title:str=None
+        title:str=None,
+        y_max:int=None
     ) -> tuple[Figure, Axes]:
     """
     Plot grouped bar chart with error bars from mutational Data.
@@ -333,6 +432,8 @@ def plot_mutational_hedgehog(
         - The figure size. (Default: `(10, 10)`.)
     title : str
         - The title of the plot. (Default: `None`.)
+    y_max : int
+        - The maximum y value displayed. Can be used to set plots to the same scale. (Default: `None`.)
 
     Returns
     -------
@@ -347,7 +448,9 @@ def plot_mutational_hedgehog(
     groups_sizes = [len(group_df) for _, group_df in df.groupby("group", sort=False)]
 
     # Calculate max y value
-    ylim = np.max(values)
+    if y_max is None:
+        y_max = np.max(values)
+    y_min = -0.1
 
     # Calculate angles and width
     num_angles = len(values) + pad * len(unique_groups)
@@ -360,8 +463,8 @@ def plot_mutational_hedgehog(
     group_to_color = dict(zip(unique_groups, my_palette))
     colors = [group_to_color[group] for group in groups]
 
-    # Generate points from start to ylim, with num_intervals steps
-    ref_pts = np.linspace(start, ylim, num_intervals)
+    # Generate points from start to y_max, with num_intervals steps
+    ref_pts = np.linspace(start, y_max, num_intervals)
     ref_pts_rounded = np.round(ref_pts, 2)
     ref_pt = [[float(x)] for x in ref_pts_rounded]
 
@@ -378,7 +481,7 @@ def plot_mutational_hedgehog(
     # but here we say we want to start at pi/2 (90 deg)
     ax.set_theta_offset(np.pi / 2)
     ax.set_theta_direction(-1) #Change the plot direction from anticlockwise to clockwise
-    ax.set_ylim(-ylim, ylim)
+    ax.set_ylim([y_min, y_max])
     ax.bar(
         angles[idxs],
         values,
@@ -392,18 +495,19 @@ def plot_mutational_hedgehog(
 
     # This iterates over the sizes of the groups adding reference
     offset = 0
+    delta = 0.01
     for group, size in zip(unique_groups, groups_sizes):
         #for each group minimum and maximum id
         min_idx, max_idx = df[df.group == group].place.min(), df[df.group == group].place.max()
 
         # Add line below bars
         x1 = np.linspace(angles[offset + pad], angles[offset + size + pad - 1], num=50)
-        ax.plot(x1, [-0.07] * 50, color="black", linewidth = 2)
+        ax.plot(x1, [-delta] * 50, color="black", linewidth = 2)   
 
         # Add text to indicate group
         ax.text(
             np.mean(x1),
-            -0.15,
+            -3*delta,
             group,
             color="black",
             fontsize=10,
@@ -412,11 +516,10 @@ def plot_mutational_hedgehog(
             va="center"
         )
 
-        delta = 0.035
         # Min index label slightly left and below first bar
         ax.text(
             x1[0],
-            -delta,
+            -2*delta,
             str(min_idx),
             size=9,
             alpha=1,
@@ -426,7 +529,7 @@ def plot_mutational_hedgehog(
         # Max index label slightly right and below last bar
         ax.text(
             x1[-1],
-            -delta,
+            -2*delta,
             str(max_idx),
             size=9,
             alpha=1,
@@ -445,7 +548,7 @@ def plot_mutational_hedgehog(
             )
             ax.text(
                 0.09,
-                rp[0]-0.02,
+                rp[0]-delta,
                 f'{rp[0]}',
                 color="black",
                 ha='center',
@@ -460,6 +563,6 @@ def plot_mutational_hedgehog(
     ax.set_xticks([])
     ax.set_yticks([])
     if title:
-        ax.set_title(title)
+        ax.set_title(title, fontdict={'fontsize':20})
     plt.tight_layout()
     return fig, ax
