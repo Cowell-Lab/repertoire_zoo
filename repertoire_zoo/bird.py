@@ -183,6 +183,7 @@ def load_gene_usage_group_data(
     for group_id, condition_name in groups:
         path = f"{repcalc_dir}{group_id}.{processing_stage}.group.{call_type}.tsv"
         df = pd.read_csv(path, sep='\t')
+        # print(df)
         df = df[(df['level']==level) & (df['mode']==mode) & (df['productive']==productive)]
         df = df.loc[:,['gene', 'duplicate_frequency', 'duplicate_frequency_avg', 'duplicate_frequency_std']]
         df['condition'] = condition_name
