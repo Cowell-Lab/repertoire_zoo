@@ -130,6 +130,7 @@ def plot_duplicate_frequency(
         df:pd.DataFrame,
         average:bool=False,
         datapoints:bool=True,
+        errorbar:bool=False,
         figsize:tuple=(16,8),
         title:str=None,
         hue=None,
@@ -149,9 +150,11 @@ def plot_duplicate_frequency(
         - A Pandas DataFrame with columns `gene`, `duplicate_frequency_avg`,
         `duplicate_frequency_std`, `condition`
     average : bool
-        - Displays the average and the error bars. (Default: `True`.)
+        - Displays the average and the error bars. (Default: `False`.)
     datapoints : bool
         - Displays the data points on the bars. (Default: `True`.)
+    errorbar : bool
+        - Display the error bar using standard error. (Default: `False`.)
     palette : list
         - A list of colors for each condition. (optional, Default: `None`.)
         uses a predefined color palette. This currently supports up to 5 groups)
@@ -204,7 +207,8 @@ def plot_duplicate_frequency(
             legend=False,
             palette=palette,
             hue_order=hue_order,
-            errorbar=None,
+            errorbar=(lambda x: (x.min(), x.max())) if errorbar else None,
+            capsize=0.3,
             ax=ax
         ) 
     else:
@@ -213,10 +217,11 @@ def plot_duplicate_frequency(
             x='gene',
             y='duplicate_frequency',
             hue='condition',
-            errorbar=None,
+            errorbar=(lambda x: (x.min(), x.max())) if errorbar else None,
             ax=ax
         )
-        ax.legend(title='Category', loc='upper left', fontsize='small')
+        # ax.legend(title='Category', loc='upper left', fontsize='small')
+        ax.legend(title='Category', loc='center left', bbox_to_anchor=(1, 0.5), fontsize='small')
 
     # sns.pointplot(
     #     data=df,
@@ -232,12 +237,10 @@ def plot_duplicate_frequency(
     # ax.legend(title='Tissue', loc='upper left', bbox_to_anchor=(1, 1))
 
     if title:
-        ax.set_title(title, size=20)
+        ax.set_title(title, size=14)
     
-    if ylim[0] is not None and isinstance(ylim[0], float):
-        plt.ylim(bottom=ylim[0])
-    if ylim[1] is not None and isinstance(ylim[1], float):
-        plt.ylim(top=ylim[1])
+    if ylim[0] is not None or ylim[1] is not None:
+        ax.set_ylim(bottom=ylim[0], top=ylim[1])
 
     if external_ax:
         plt.tight_layout()
@@ -395,12 +398,43 @@ def plot_vj_chord_diagram(
 
     return fig, ax
 
-def plot_diversity_curve(df, figsize=(16,8)):
-    fig, ax = plt.subplots(figsize=(16,8))
+def plot_diversity_curve(
+        df:pd.DataFrame,
+        figsize:tuple[int,int]=(16,8),
+        ax:Axes=None
+    ) -> tuple[Figure,Axes]:
+    """
+    Parameters
+    ----------
+    df : pd.DataFrame
+        - A Pandas DataFrame
+    figsize : tuple[int,int]
+        - The size of the figure. (Default: `(16,8)`.)
+    ax : Axes
+        - A Matplotlib.pyplot.Axes object to plot with. If `None` a new Figure and Axes 
+        will be created to plot on to. (Default: `None`.)
+
+    Returns
+    -------
+    fig, ax : tuple[Figure, Axes]
+        - A matplotlib.pytplot Figure and Axes object.
+    """
+    # Set up or call in Figure
+    external_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(16,8))
+    else:
+        fig = ax.get_figure()
+        external_ax = True
+    
     ax.plot(df['q'], df['d'])
     ax.set_xscale('log')
     ax.grid(axis='x')
     ax.fill_between(df['q'], df['d_lower'], df['d_upper'])
+
+    if not external_ax:
+        plt.tight_layout()
+    
     return fig, ax
 
 def plot_mutational_hedgehog(
@@ -409,9 +443,10 @@ def plot_mutational_hedgehog(
         num_intervals:int=4,
         start:float=0.05,
         pallete:str='tab20',
-        figsize:tuple[int,int]=(10, 10),
+        figsize:tuple[int, int]=(10, 10),
         title:str=None,
-        y_max:int=None
+        y_max:int=None,
+        ax:Axes=None
     ) -> tuple[Figure, Axes]:
     """
     Plot grouped bar chart with error bars from mutational Data.
@@ -434,12 +469,23 @@ def plot_mutational_hedgehog(
         - The title of the plot. (Default: `None`.)
     y_max : int
         - The maximum y value displayed. Can be used to set plots to the same scale. (Default: `None`.)
+    ax : Axes
+        - A Matplotlib.pyplot.Axes object to plot with. If `None` a new Figure and Axes 
+        will be created to plot on to. (Default: `None`.)
 
     Returns
     -------
     fig, ax : tuple[Figure, Axes]
         - Matplotlib Figure and Axes objects.
     """
+    # Set up or call in Figure
+    external_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(16,8))
+    else:
+        fig = ax.get_figure()
+        external_ax = True
+    
     values = df["value"].values
     groups = df["group"].values
 
@@ -562,7 +608,235 @@ def plot_mutational_hedgehog(
     ax.yaxis.grid(False)
     ax.set_xticks([])
     ax.set_yticks([])
+    
     if title:
         ax.set_title(title, fontdict={'fontsize':20})
-    plt.tight_layout()
+    
+    if external_ax:
+        plt.tight_layout()
+    
+    return fig, ax
+
+
+def plot_diversity_curve(
+        df:pd.DataFrame,
+        ax:Axes=None,
+        figsize:tuple[int, int]=(16, 8),
+        palette:str|dict='Set2',
+        legend_title:str=None,
+        plot_title:str=None
+    ) -> tuple[Figure, Axes]:
+    """
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        - A pandas dataframe containing the diversity curve data
+    ax : Axes
+        - A Matplotlib.pyplot.Axes object to plot with. If `None` a new Figure and Axes 
+        will be created to plot on to. (Default: `None`.)
+    figsize : tuple[int, int]
+        - The size of the figure. (Default: `(16,8)`.)
+    palette : str|dict
+        - The name of the palette to use, or a custom defined dictionary. (Default: `'Set2'`)
+    legend_title : str
+        - The title of the legend. (Default: `None`.)
+    plot_title : str
+        - The title of the plot. (Default: `None`.)
+
+    Returns
+    -------
+    fig, ax : tuple[Figure, Axes]
+        - A tuple containing a Figure and Axes object from Matplotlib.pyplot
+    """
+    # Set up or bring in Figure
+    external_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.get_figure()
+        external_ax = True
+
+    # Draw lineplot
+    sns.lineplot(data=df, x='q', y='d', markers=True, hue='condition', palette=palette, ax=ax)
+
+    # Set log scale for x-axis
+    ax.set_xscale('log')
+
+    # Fill between for each group
+    for condition, group_df in df.groupby('condition'):
+        ax.fill_between(group_df['q'], group_df['d_lower'], group_df['d_upper'], alpha=0.3)
+
+    # Legend and formatting
+    ax.legend(title=legend_title, bbox_to_anchor=(1, 1))
+    
+    if plot_title:
+        ax.set_title(plot_title)
+
+    # Only call tight_layout if fig was created
+    if not external_ax:
+        plt.tight_layout()
+
+    return fig, ax
+
+
+def plot_clonal_abundance(
+        df:pd.DataFrame,
+        y_col:str='cumulative_abundance',
+        ax:Axes=None,
+        figsize:tuple[int,int]=(16, 8),
+        legend_title:str=None,
+        plot_title:str=None
+    ) -> tuple[Figure, Axes]:
+    """
+    Plot the clonal abundance
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        - The Pandas DataFrame with the relevant information.
+    y_col : str
+        - The name of the y-axis column to use. (Default: `'cumulative_abundance'`.)
+    ax : Axes
+        - A matplotlib.pyplot.Axes object to plot on to. If an Axes object is not provided
+        a new Figure and Axes will be generated. (Default: `None`.)
+    figsize : tuple[int, int]
+        - The size of the figure. (Default: `(16, 8)`.)
+    legend_title : str
+        - The title of the legend. (Default: `None`.)
+    plot_title : str
+        - The title of the plot. (Default: `None`.)
+
+    Returns
+    -------
+    fig, ax : tuple[Figure, Axes]
+        - A tuple containing a Figure and Axes object from Matplotlib.pyplot
+    """
+    # Set up or bring in Figure
+    external_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.get_figure()
+        external_ax = True
+
+    sns.lineplot(data=df, x='rank', y=y_col, hue='condition', ax=ax)
+    
+    # Legend and formatting
+    ax.legend(title=legend_title, bbox_to_anchor=(1,1))
+
+    if plot_title:
+        plt.title(plot_title)
+    
+    # Only call tight_layout if new fig was created
+    if not external_ax:
+        plt.tight_layout()
+    
+    return fig, ax
+    
+def plot_cdr3_aa_sharing_heatmap(
+        df:pd.DataFrame,
+        cmap:str|dict='viridis',
+        figsize=(20, 15),
+        ax:Axes=None
+    ) -> tuple[Figure, Axes]:
+    """
+    Plot heatmap from preprocessed matrix and labels.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        - The Pandas DataFrame that contains the data to plot.
+    cmap : str|dict
+        - The colormap to use for plotting. Can either be a string that aligns
+        with a seaborn colormap, or a custom defined dictionary. (Default: `'viridis'`.)
+    figsize : tuple[int, int]
+        - The size of the figure. (Default: `(20,15)`.)
+    ax : Axes
+        - A matplotlib.pyplot.Axes object to plot on to. If an Axes object is not provided
+        a new Figure and Axes will be generated. (Default: `None`.)
+
+    Returns
+    -------
+    fig, ax : tuple[Figure, Axes]
+        - A tuple containing a Figure and Axes object from Matplotlib.pyplot
+    """
+    # Set up or bring in Figure
+    external_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.get_figure()
+        external_ax = True
+    
+    if df.select_dtypes(include=['float']).empty:
+        fmt = 'd'  # no floats found, assume integers
+    else:
+        fmt = '.2f'
+    
+    sns.heatmap(df, annot=True, fmt=fmt, cmap = cmap, annot_kws={"size": 10}, ax=ax)
+    
+    ax.tick_params(axis = 'x', rotation=90)
+    
+    # Only call tight_layout if new fig was created
+    if not external_ax:
+        plt.tight_layout()
+
+    return fig, ax
+
+
+def plot_cdr3_sequence_count(
+        df:pd.DataFrame,
+        x_col:str='junction_aa',
+        abundance:bool=False,
+        top_n:int=None,
+        figsize:tuple[int,int]=(15, 6),
+        ax:Axes=None
+    ) ->tuple[Figure, Axes]:
+    """
+    Plot a barplot of top CDR3 sequences.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        - DataFrame of top CDR3 sequences
+    x_col : str
+        - Column for x-axis (junction_aa for cdr3)
+    abundance : bool
+        - Whether to use duplicate_count (True) or sequence_count (False)
+    top_n : int
+        - Number of top sequences to plot. If no value is provided, then all available sequences will be plotted.
+        (Default: `None`.)
+    figsize : tuple[int, int]
+        - Size of the Figure
+    ax : Axes
+        - A matplotlib.pyplot.Axes object to plot on to. If an Axes object is not provided
+        a new Figure and Axes will be generated. (Default: `None`.)
+
+    Returns
+    -------
+    fig, ax : tuple[Figure, Axes]
+        - A tuple containing a Figure and Axes object from Matplotlib.pyplot
+    """
+    # Set up or bring in Figure
+    external_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.get_figure()
+        external_ax = True
+    
+    y_col = 'duplicate_count' if abundance else 'sequence_count'
+
+    if top_n is None:
+        top_n = df.shape[0]
+    
+    df = df.sort_values(by=y_col, ascending=False).iloc[:top_n]
+    
+    sns.barplot(data=df, x=x_col, y=y_col, ax=ax)
+    ax.tick_params(axis='x', rotation=90)
+
+    if not external_ax:
+        plt.tight_layout()
+    
     return fig, ax
