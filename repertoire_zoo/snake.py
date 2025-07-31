@@ -2,6 +2,9 @@
 Module Name: Snake
 
 **S**ubject **N**etwork **A**nalysis of **K**ey **E**vents
+TODO: Change name to SPIDER to represent the web-like characteristics of a graph network.
+Subject Pathway Inference through Dynamic Event Representation?
+Subject Pattern Indeicication for Data-drive Event Relations?
 
 Contains functions that create NetworkX graphs.
 """
