@@ -371,6 +371,7 @@ def load_and_prepare_data_vj_combo(
     cols = ['v_level', 'j_level', 'duplicate_frequency_avg', 'duplicate_frequency_std']
     return df.loc[:, cols]
 
+
 def load_diversity_data(data_dir, repertoire_id, processing_stage):
     filename = f"{data_dir}{repertoire_id}.{processing_stage}.diversity.tsv"
     df = pd.read_csv(filename, sep='\t')
