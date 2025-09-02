@@ -49,6 +49,7 @@ def read_repertoire_info_airr(
         ethnicity = subject.get('ethnicity', None)
         race = subject.get('race', None)
         diagnosis = subject.get('diagnosis', [{}])[0].get('study_group_description', None)
+        disease_state = sample.get('disease_state_sample', None)
         tissue = sample.get('tissue', {}).get('label', None)
         library = sample.get('sequencing_run_id', None)
         info_list.append(
@@ -61,10 +62,12 @@ def read_repertoire_info_airr(
                 'race':race, 
                 'tissue':tissue, 
                 'library':library,
-                'diagnosis':diagnosis
+                'diagnosis':diagnosis,
+                'disease_state':disease_state
             }
         )
     df = pd.DataFrame(info_list)
+    df['ss_id'] = df['subject_id'] + '_' + df['sample_id']
 
     return df
 
@@ -180,12 +183,11 @@ def load_gene_usage_group_data(
         `duplicate_frequency_avg`, `duplicate_frequency_std`, `condition`.
     """
     dfs = []
-    for group_id, condition_name in groups:
+    for group_id, condition_name, *_ in groups:
         path = f"{repcalc_dir}{group_id}.{processing_stage}.group.{call_type}.tsv"
         df = pd.read_csv(path, sep='\t')
-        # print(df)
         df = df[(df['level']==level) & (df['mode']==mode) & (df['productive']==productive)]
-        df = df.loc[:,['gene', 'duplicate_frequency', 'duplicate_frequency_avg', 'duplicate_frequency_std']]
+        df = df.loc[:,['gene', 'duplicate_frequency_avg', 'duplicate_frequency_std', 'N']]
         df['condition'] = condition_name
         dfs.append(df)
 
@@ -292,7 +294,7 @@ def load_and_prepare_data_subjects(
 
 def load_and_prepare_data_junction_aa(
         repcalc_dir:str,
-        groups:list,
+        groups:list=None,
         processing_stage:str='.igblast.makedb.allele.clone.group.',
         call_type:str='junction_aa_length'
     ) -> pd.DataFrame:
@@ -316,13 +318,16 @@ def load_and_prepare_data_junction_aa(
         - Combined DataFrame with columns: `CDR3_LENGTH`, `CDR3_COUNT`, `CDR3_RELATIVE`.
     """
     dfs = []
-    for group_id, condition_name in groups:
-        path = f"{repcalc_dir}{group_id}{processing_stage}{call_type}.tsv"
-        df = pd.read_csv(path, sep='\t')
-        df = df.loc[:, ['CDR3_LENGTH', 'CDR3_COUNT', 'CDR3_RELATIVE']].copy()
-        df['condition'] = condition_name
-        dfs.append(df)
-    df_combined = pd.concat(dfs, ignore_index=True)
+    if groups is not None:
+        for group_id, condition_name, *_ in groups:
+            path = f"{repcalc_dir}{group_id}{processing_stage}{call_type}.tsv"
+            df = pd.read_csv(path, sep='\t')
+            df = df.loc[:, ['CDR3_LENGTH', 'CDR3_COUNT', 'CDR3_RELATIVE']].copy()
+            df['condition'] = condition_name
+            dfs.append(df)
+        df_combined = pd.concat(dfs, ignore_index=True)
+
+
     return df_combined
 
 # rename this to load_and_prepare_data_vdj_combo? seems like vj_combo is selected from other options
@@ -371,17 +376,97 @@ def load_and_prepare_data_vj_combo(
     cols = ['v_level', 'j_level', 'duplicate_frequency_avg', 'duplicate_frequency_std']
     return df.loc[:, cols]
 
-def load_diversity_data(data_dir, repertoire_id, processing_stage):
+def load_diversity_data(
+        data_dir:str,
+        repertoire_id:str,
+        processing_stage:str
+    ):
+    """
+    Load in the diversity data for a repertoire.
+
+    Parameters
+    ----------
+    data_dir : str
+        The data directory path.
+    repertoire_id :  str
+        The repertoire ID.
+    processing_stage : str
+        The processing stage.
+    
+    Returns
+    -------
+    df : pd.DataFrame
+    """
     filename = f"{data_dir}{repertoire_id}.{processing_stage}.diversity.tsv"
     df = pd.read_csv(filename, sep='\t')
     return df
 
-def load_diversity_group_data(data_dir, repertoire_group, processing_stage):
+def load_diversity_group_data(
+        data_dir:str,
+        repertoire_group:dict,
+        processing_stage:str
+    ):
+    """
+    Load in the diversity data for a repertoire group.
+
+    Parameters
+    ----------
+    data_dir : str
+        The data directory path.
+    repertoire_group :  dict
+        The repertoire group extracted from `repertoiers.airr.json`.
+    processing_stage : str
+        The processing stage.
+    
+    Returns
+    -------
+    df : pd.DataFrame
+    """
     dfs = []
     for rep in repertoire_group['repertoires']:
-        df = load_diversity_data(data_dir, rep['repertoire_id'], processing_stage)
+        df = load_diversity_data(
+            data_dir=data_dir,
+            repertoire_id=rep['repertoire_id'],
+            processing_stage=processing_stage)
+        df['condition'] = repertoire_group['repertoire_group_name']
         dfs.append(df)
-    return dfs
+
+    return pd.concat(dfs)
+
+def load_diversity_multiple_group_data(
+        data_dir:str,
+        repertoire_groups:list[tuple[str, str]],
+        processing_stage:str,
+        all_groups:dict
+    ):
+    """
+    Load in the diversity data for multiple repertoire groups.
+
+    Parameters
+    ----------
+    data_dir : str
+        The data directory path.
+    repertoire_groups :  list[tuple[str, str]]
+        Containing the tuple of `repertoire_group_id` and `group_name`. Technically group name is not used here but this format was used for consistency.
+    processing_stage : str
+        The processing stage.
+    all_groups : dict
+        The repertoire groups from `repertoiers.airr.json`. Can be constructed using `{ obj['repertoire_group_id'] : obj for obj in data['RepertoireGroup'] }`
+    
+    Returns
+    -------
+    df : pd.DataFrame
+    """
+    dfs = []
+    for (group_id, *_) in repertoire_groups:
+        df = load_diversity_group_data(
+            data_dir=data_dir,
+            repertoire_group=all_groups[group_id],
+            processing_stage=processing_stage
+        )
+        dfs.append(df)
+    df = pd.concat(dfs)
+    return df
 
 # TO DO: Check if group_name is actually a name or an ID. 
 # Using repcalc files, I noticed that there is group_id
@@ -445,9 +530,11 @@ def load_and_prepare_mutation_data(
 
     # Replace NaNs
     se = se.fillna(0)
+    
     # Trim codons
     avg.iloc[:trim_codons] = 0
     se.iloc[:trim_codons] = 0
+    
     # --- Build data for plotting ---
     def build_region_data(region_name, codon_range, avg, se, empty_bar=4):
         group, place, value, se_vals, se_start, se_end = [], [], [], [], [], []
@@ -482,5 +569,234 @@ def load_and_prepare_mutation_data(
         "se_start": se_start,
         "se_end": se_end
     })
+    
     # View result
     return data
+
+def load_shared_cdr3_aa_data(
+        repcalc_dir, 
+        repertoire_groups, 
+        sample_info_df, 
+        groups, 
+        percentage=False,
+        similarity_metric='jaccard',
+        sharing='cdr3_aa_sharing',
+        processing_stage='repertoire.shared.matrix',
+        plot_type='between'
+    ):
+    """
+    Load and process cdr3 data for plotting.
+    
+    Returns:
+    - matrix: processed DataFrame ready for heatmap
+    """
+
+    def similarity_calculation(df, similarity_metric):
+        '''
+        J(A,B)= ∣A∩B∣ / ∣A∪B∣ 
+        simpson_coefficient = ∣A∩B∣ / min(∣A∣,∣B∣)
+        a_in_b = ∣A∩B∣ / ∣A∣ # % in one group or the other
+        b_in_a = ∣A∩B∣ / ∣B∣
+        '''
+        percentage_matrix = df.copy()
+        percentage_matrix = percentage_matrix.astype(float)
+
+        # Loop over the matrix and calculate the percentage of shared overlap
+        for i in percentage_matrix.index:
+            for j in percentage_matrix.columns:
+                # Calculate percentage of shared overlap
+                shared_cdr3s = df.at[i, j]
+                if similarity_metric == 'jaccard':
+                    if shared_cdr3s == 0:
+                        percentage_matrix.at[i, j] = 0
+                        continue
+                    total_cdr3s_i = df.at[i, i] + df.at[j, j] -  shared_cdr3s # total values in i and j - common
+                elif similarity_metric == 'simpson_coefficient':
+                    total_cdr3s_i = min(df.at[i, i], df.at[j, j]) # Minimum diagonal value for sample i, j
+                elif similarity_metric == 'a_in_b':
+                    total_cdr3s_i = df.at[i, i] # Minimum diagonal value for sample i
+                elif similarity_metric == 'b_in_a':
+                    total_cdr3s_i =  df.at[j, j] # Minimum diagonal value for sample j
+                    
+                pct_overlap = (shared_cdr3s / total_cdr3s_i)*100
+                percentage_matrix.at[i, j] = pct_overlap
+
+        np.fill_diagonal(percentage_matrix.values, 0)
+
+        return percentage_matrix
+
+    path = f"{repcalc_dir}{processing_stage}.{sharing}.tsv"
+    df = pd.read_csv(path, sep='\t', index_col=0)
+
+    if percentage:
+        df = similarity_calculation(df, similarity_metric)
+        
+    groups_repertoire_ids = {}
+    groups_sample_ids = {}
+    for group_id, condition, *_ in groups:
+        repertoire_ids = []
+        sample_ids = []
+        for item in repertoire_groups[group_id]['repertoires']:
+            repertoire_id = item['repertoire_id'].strip()
+            sample_id = sample_info_df.loc[sample_info_df.repertoire_id == repertoire_id, 'ss_id'].values[0]
+            repertoire_ids.append(repertoire_id)
+            sample_ids.append(sample_id)
+        groups_repertoire_ids[condition] = repertoire_ids
+        groups_sample_ids[condition] = sample_ids
+
+    if plot_type == 'within':
+        # One group only
+        assert len(groups_repertoire_ids) == 1, "Within group plot requires exactly 1 group"
+        cond1 = cond2 = list(groups_repertoire_ids.keys())[0]
+    elif plot_type == 'between':
+        # Two groups
+        assert len(groups_repertoire_ids) == 2, "Between group plot requires exactly 2 groups"
+        cond1, cond2 = list(groups_repertoire_ids.keys())
+    else:
+        raise ValueError("plot_type must be 'within' or 'between'")
+        
+    ids1 = groups_repertoire_ids[cond1]
+    ids2 = groups_repertoire_ids[cond2]
+    matrix = df.loc[ids1, ids2]
+    matrix.index = groups_sample_ids[cond1]
+    matrix.columns = groups_sample_ids[cond2]
+    matrix.index.name = cond1
+    matrix.columns.name = cond2
+    return matrix
+
+def load_cdr3_sequences_each_repertoire(
+        repcalc_dir,
+        repertoire_id,
+        sharing='cdr3_aa_sharing',
+        processing_stage='repertoire'
+    ):
+    """
+    Load and process CDR3 sequence data for a single repertoire.
+
+    Parameters:
+    - repcalc_dir (str): Directory where files are stored
+    - repertoire_id (str): Repertoire UUID
+    - sharing (str): Type of sharing metric (default 'cdr3_aa_sharing')
+    - processing_stage (str): Processing stage in filename (default 'repertoire')
+
+    Returns:
+    - df (DataFrame): Processed top-N CDR3 sequences
+    """
+    path = f'{repcalc_dir}{repertoire_id}.{processing_stage}.{sharing}.tsv'
+    df = pd.read_csv(path, sep='\t')
+    return df
+
+def load_unique_cdr3_sequence_numbers(repcalc_dir, repertoire_groups, groups, sample_info_df, sharing='cdr3_aa_sharing', processing_stage='repertoire'):
+    groups_unique_cdr3_counts = []
+    for group_id, condition, *_ in groups:
+        for item in repertoire_groups[group_id]['repertoires']:
+            repertoire_id = item['repertoire_id'].strip()
+            df = load_cdr3_sequences_each_repertoire( repcalc_dir=repcalc_dir, repertoire_id=repertoire_id)
+            sample_id = sample_info_df.loc[sample_info_df.repertoire_id == repertoire_id, 'sample_id'].values[0]
+            n_unique_cdr3 = df['junction_aa'].nunique()
+            groups_unique_cdr3_counts.append({
+                'condition': condition,
+                'repertoire_id': repertoire_id,
+                'sample_id': sample_id,
+                'n_unique_cdr3': n_unique_cdr3
+            })
+    # Convert list of dicts to DataFrame
+    df = pd.DataFrame(groups_unique_cdr3_counts)
+    
+    return df
+    
+def load_and_prepare_group_summary_comparison(
+        repcalc_dir,
+        search_ids,
+        processing_stage='group.summary_comparison',
+        sharing='cdr3_aa_sharing'
+    ):
+
+    def parse_grouped_matrices(
+            file_path
+        ):
+
+        groups = []
+        with open(file_path, 'r') as f:
+            lines = f.readlines()
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            if line.startswith("GROUPS"):
+                # Extract group metadata
+                group_info = line.split("\t")[1:]
+                # Next line is the header
+                i += 1
+                header = lines[i].strip().split("\t")[1:]  # skip "SHARED"
+                # Now read the matrix rows
+                matrix_data = []
+                i += 1
+                while i < len(lines) and not lines[i].startswith("GROUPS"):
+                    row = lines[i].strip().split("\t")
+                    if len(row) < 2:
+                        i += 1
+                        continue
+                    matrix_data.append([int(row[0])] + [int(x) for x in row[1:]])
+                    i += 1
+                # Build DataFrame
+                df = pd.DataFrame(matrix_data, columns=["ID"] + header)
+                df.set_index('ID', inplace = True)
+                groups.append({
+                    "group_ids": group_info,
+                    "data": df
+                })
+            else:
+                i += 1
+
+        return groups
+
+    path = f'{repcalc_dir}{processing_stage}.{sharing}.tsv'
+
+    ## Parse the data
+    parsed_groups = parse_grouped_matrices(path)
+    df = None
+    for group in parsed_groups:
+        if search_ids == group["group_ids"]:
+            df = group['data']
+            return df
+    if df == None:
+        raise ValueError("Groups not found.")
+    
+    return df
+
+def load_and_prepare_clonal_abundance_data(data_dir, repertoires ,clone_tool='repcalc', processing_stage='igblast.allele.clone'):
+    dfs = []
+    for repertoire_id, condition_name in repertoires:
+        if clone_tool == 'repcalc':
+            path = f"{data_dir}{repertoire_id}.{processing_stage}.count.tsv"
+            col = 'copy_freq'
+        if clone_tool == 'changeo':
+            path = f"{data_dir}{repertoire_id}.{processing_stage}.abundance.tsv"
+            col = 'p'
+        df = pd.read_csv(path, sep='\t')
+        df['rank'] = np.arange(1, len(df)+1)
+        ## Rename the column name to have consistency in the dataframe
+        df = df.rename(columns={col: 'abundance'})
+        df['cumulative_abundance'] = df.abundance.transform('cumsum')
+        df['condition'] = condition_name
+        dfs.append(df)
+    df = pd.concat(dfs, ignore_index=True)    
+    return df
+
+def load_and_prepare_clonal_abundance_group_data(data_dir, groups, all_groups, clone_tool='repcalc', processing_stage='igblast.allele.clone'):
+    dfs = []
+    for (group_id, *_) in groups:
+        repertoires = []
+        for rep in all_groups[group_id]['repertoires']:
+            repertoires.append([rep['repertoire_id'], all_groups[group_id]['repertoire_group_name']])
+        
+        df = load_and_prepare_clonal_abundance_data(
+            data_dir=data_dir,
+            repertoires=repertoires,
+            clone_tool=clone_tool,
+            processing_stage=processing_stage
+        )
+    
+        dfs.append(df)
+    df = pd.concat(dfs)
+    return df

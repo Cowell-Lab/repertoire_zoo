@@ -28,6 +28,7 @@ import pandas as pd
 from pycirclize import Circos
 import seaborn as sns
 
+# Gene Usage
 def plot_gene_usage_groups(
         df_combined: pd.DataFrame,
         relative:bool=True,
@@ -128,9 +129,8 @@ def plot_gene_usage_groups(
 
 def plot_duplicate_frequency(
         df:pd.DataFrame,
-        average:bool=False,
         datapoints:bool=True,
-        errorbar:bool=False,
+        errorbar:str=None,
         figsize:tuple=(16,8),
         title:str=None,
         hue=None,
@@ -139,7 +139,9 @@ def plot_duplicate_frequency(
         threshold:float=None,
         ylim:tuple[float,float]=(None,None),
         ax:Axes=None,
-        split:bool=False
+        split:bool=False,
+        categories:list=None,
+        legend:bool=False
     ) -> tuple[Figure, Axes]:
     """
     Plot grouped bar chart with error bars from combined dataframe.
@@ -147,14 +149,13 @@ def plot_duplicate_frequency(
     Parameters
     ----------
     df : pd.DataFrame
-        - A Pandas DataFrame with columns `gene`, `duplicate_frequency_avg`,
+        - A Pandas DataFrame with columns `gene`, `N`, `duplicate_frequency_avg`,
         `duplicate_frequency_std`, `condition`
-    average : bool
-        - Displays the average and the error bars. (Default: `False`.)
     datapoints : bool
         - Displays the data points on the bars. (Default: `True`.)
-    errorbar : bool
-        - Display the error bar using standard error. (Default: `False`.)
+    errorbar : str
+        - Display the error bar using defined method: `sd`, `se`. `sd` is for the standard deviation
+         while `se` reports the standard error. (Default: None.)
     palette : list
         - A list of colors for each condition. (optional, Default: `None`.)
         uses a predefined color palette. This currently supports up to 5 groups)
@@ -170,6 +171,8 @@ def plot_duplicate_frequency(
         (Default: `(None, None)`.)
     ax : Axes
         - A `matplotlib.axes.Axes` object to plot with. (Deafult: `None`.)
+    categories : list
+        - A list of strings of the names of categories to plot on x-axis
 
     Returns
     -------
@@ -182,7 +185,6 @@ def plot_duplicate_frequency(
     else:
         fig = ax.get_figure()
         external_ax = True
-
 
     # Determine hue order
     if hue_order is None and isinstance(palette, dict):
@@ -194,110 +196,86 @@ def plot_duplicate_frequency(
 
     # reduce df by threshold
     if threshold is not None and isinstance(threshold, float):
-        df = df[df['duplicate_frequency']>=threshold]
-
-    
+        df['duplicate_frequency_avg'] = df['duplicate_frequency_avg'].where(df['duplicate_frequency_avg'] >= threshold, 0)
+        if split:
+            df = df.groupby('gene').filter(lambda g: not (g['duplicate_frequency_avg'] == 0).all())
+    else:
+        df = df.copy()
 
     if not split:
         sns.barplot(
             data=df,
             x='gene',
-            y='duplicate_frequency',
+            y='duplicate_frequency_avg',
             hue=hue,
             legend=False,
             palette=palette,
-            hue_order=hue_order,
-            errorbar=(lambda x: (x.min(), x.max())) if errorbar else None,
+            # hue_order=hue_order,
+            order=categories if categories is not None else None,
             capsize=0.3,
             ax=ax
         ) 
+        if categories is not None:
+            ax.set_xticks(range(len(categories)))
+            ax.set_xticklabels(categories)
     else:
         sns.barplot(
             data=df,
             x='gene',
-            y='duplicate_frequency',
+            y='duplicate_frequency_avg',
             hue='condition',
-            errorbar=(lambda x: (x.min(), x.max())) if errorbar else None,
             ax=ax
         )
-        # ax.legend(title='Category', loc='upper left', fontsize='small')
-        ax.legend(title='Category', loc='center left', bbox_to_anchor=(1, 0.5), fontsize='small')
 
-    # sns.pointplot(
-    #     data=df,
-    #     linestyle='none',
-    #     x='gene',
-    #     y='duplicate_frequency',
-    #     color='black',
-    #     zorder=1
-    # )
+        # ax.legend(title='Category', loc='upper left', fontsize='small')
+
+
+    if errorbar=='sd':
+        # Loop through each bar (patch) and add error bars at the correct positions
+        for bar, err in zip(ax.patches, df['duplicate_frequency_std']):
+            # Center of the bar
+            x_center = bar.get_x() + bar.get_width() / 2
+            y_top = bar.get_height()
+            
+            ax.errorbar(
+                x=x_center,
+                y=y_top,
+                yerr=err,
+                fmt='none',
+                ecolor='black',
+                capsize=5
+            )
+    if errorbar=='se':
+        # Loop through each bar (patch) and add error bars at the correct positions
+        for bar, err in zip(ax.patches, df['duplicate_frequency_std']/np.sqrt(df['N'])):
+            # Center of the bar
+            x_center = bar.get_x() + bar.get_width() / 2
+            y_top = bar.get_height()
+            
+            ax.errorbar(
+                x=x_center,
+                y=y_top,
+                yerr=err,
+                fmt='none',
+                ecolor='black',
+                capsize=5
+            )
 
     ax.tick_params(axis='x', rotation=90)
-    # ax.grid(True)
-    # ax.legend(title='Tissue', loc='upper left', bbox_to_anchor=(1, 1))
+
+    if legend:
+        ax.legend(
+            title='Category',
+            loc='center left',
+            bbox_to_anchor=(1, 0.5),
+            fontsize='small'
+        )
 
     if title:
         ax.set_title(title, size=14)
     
     if ylim[0] is not None or ylim[1] is not None:
         ax.set_ylim(bottom=ylim[0], top=ylim[1])
-
-    if external_ax:
-        plt.tight_layout()
-
-    return fig, ax
-
-def plot_junction_aa_length(
-        df: pd.DataFrame,
-        x_col:str='CDR3_LENGTH',
-        y_col:str='CDR3_COUNT',
-        hue_col:str='condition',
-        palette:str='Set1',
-        figsize:tuple[int,int]=(18, 8),
-        log_scale:bool=False,
-        aa_range:tuple[int,int]=(6, 29),
-        ax:Axes=None
-    ) -> tuple[Figure, Axes]:
-    """
-    Plot grouped bar chart with error bars from combined dataframe.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        - A Pandas DataFrame with columns `gene`, `duplicate_frequency_avg`,
-        `duplicate_frequency_std`, `condition`
-    x_col : str
-        - The x-variable column name. (Default: `CDR3_LENGTH`)
-    y_col : str
-        - The y-variable column name. (Default: `CDR3_COUNT`)
-    hue_col : str
-        - The coloumn name to determine the hue color. (Default: `condition`)
-    palette : str
-        - The seaborn color palette used. (Default: `Set1`)
-    figsize : tuple
-        - The figure size. (Default:`(18,8)`)
-    log_scale : bool
-        - Place the y axis into a log scale. (Default: `False`)
-    aa_range : tuple[int,int]
-        - The range of amino acid positions to display. (Default: `(6,29)`.)
-    Returns
-    -------
-    fig, ax : tuple
-        - Matplotlib figure and axes objects
-    """
-    external_ax = False
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
-    else:
-        fig = ax.get_figure()
-        external_ax = True
-    
-    sns.barplot(data=df, x=x_col, y=y_col, hue=hue_col, palette=palette, ax=ax)
-    if log_scale:
-        ax.set_yscale('log')
-    plt.xticks(rotation=90)
-    plt.tight_layout()
-    ax.set_xlim(aa_range[0], aa_range[1])
 
     if external_ax:
         plt.tight_layout()
@@ -398,45 +376,7 @@ def plot_vj_chord_diagram(
 
     return fig, ax
 
-def plot_diversity_curve(
-        df:pd.DataFrame,
-        figsize:tuple[int,int]=(16,8),
-        ax:Axes=None
-    ) -> tuple[Figure,Axes]:
-    """
-    Parameters
-    ----------
-    df : pd.DataFrame
-        - A Pandas DataFrame
-    figsize : tuple[int,int]
-        - The size of the figure. (Default: `(16,8)`.)
-    ax : Axes
-        - A Matplotlib.pyplot.Axes object to plot with. If `None` a new Figure and Axes 
-        will be created to plot on to. (Default: `None`.)
-
-    Returns
-    -------
-    fig, ax : tuple[Figure, Axes]
-        - A matplotlib.pytplot Figure and Axes object.
-    """
-    # Set up or call in Figure
-    external_ax = False
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(16,8))
-    else:
-        fig = ax.get_figure()
-        external_ax = True
-    
-    ax.plot(df['q'], df['d'])
-    ax.set_xscale('log')
-    ax.grid(axis='x')
-    ax.fill_between(df['q'], df['d_lower'], df['d_upper'])
-
-    if not external_ax:
-        plt.tight_layout()
-    
-    return fig, ax
-
+# Mutations
 def plot_mutational_hedgehog(
         df:pd.DataFrame,
         pad:int=5,
@@ -481,7 +421,7 @@ def plot_mutational_hedgehog(
     # Set up or call in Figure
     external_ax = False
     if ax is None:
-        fig, ax = plt.subplots(figsize=(16,8))
+        fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(polar=True))
     else:
         fig = ax.get_figure()
         external_ax = True
@@ -515,7 +455,6 @@ def plot_mutational_hedgehog(
     ref_pt = [[float(x)] for x in ref_pts_rounded]
 
     #start plotting
-    fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(polar=True))
     offset = 0
     idxs = []
     for size in groups_sizes:
@@ -617,14 +556,16 @@ def plot_mutational_hedgehog(
     
     return fig, ax
 
-
+# Diversity
 def plot_diversity_curve(
         df:pd.DataFrame,
         ax:Axes=None,
         figsize:tuple[int, int]=(16, 8),
         palette:str|dict='Set2',
+        hue='condition',
+        legend:bool|str='auto',
         legend_title:str=None,
-        plot_title:str=None
+        title:str=None
     ) -> tuple[Figure, Axes]:
     """
     
@@ -639,6 +580,10 @@ def plot_diversity_curve(
         - The size of the figure. (Default: `(16,8)`.)
     palette : str|dict
         - The name of the palette to use, or a custom defined dictionary. (Default: `'Set2'`)
+    hue : str
+        - The columns to set the hue on. Can be set as 'repertoire_id' or 'condition'. (Default: `'condition'`)
+    legend : bool|str
+        - Display a legend. Use seaborn documentation. Can use “auto”, “brief”, “full”, or False. (Default: `'auto'`)
     legend_title : str
         - The title of the legend. (Default: `None`.)
     plot_title : str
@@ -658,20 +603,30 @@ def plot_diversity_curve(
         external_ax = True
 
     # Draw lineplot
-    sns.lineplot(data=df, x='q', y='d', markers=True, hue='condition', palette=palette, ax=ax)
+    sns.lineplot(data=df,
+                 x='q',
+                 y='d',
+                 markers=True,
+                 hue=hue,
+                 palette=palette,
+                 legend=legend,
+                 ax=ax)
+    # sns.lineplot(data=df, x='q', y='d', markers=True, palette=palette, ax=ax)
 
-    # Set log scale for x-axis
+    # Set log scale
     ax.set_xscale('log')
+    ax.set_yscale('log')
 
     # Fill between for each group
-    for condition, group_df in df.groupby('condition'):
-        ax.fill_between(group_df['q'], group_df['d_lower'], group_df['d_upper'], alpha=0.3)
+    # for condition, group_df in df.groupby('condition'):
+    #     ax.fill_between(group_df['q'], group_df['d_lower'], group_df['d_upper'], alpha=0.3)
 
     # Legend and formatting
-    ax.legend(title=legend_title, bbox_to_anchor=(1, 1))
+    if legend != False:
+        ax.legend(title=legend_title, bbox_to_anchor=(1, 1))
     
-    if plot_title:
-        ax.set_title(plot_title)
+    if title:
+        ax.set_title(title)
 
     # Only call tight_layout if fig was created
     if not external_ax:
@@ -679,7 +634,87 @@ def plot_diversity_curve(
 
     return fig, ax
 
+def plot_diversity_boxplot(
+        df:pd.DataFrame,
+        ax:Axes=None,
+        figsize:tuple[int, int]=(16, 8),
+        palette:str|dict='Set2',
+        hue=None,
+        legend:bool|str='auto',
+        legend_title:str=None,
+        title:str=None
+    ) -> tuple[Figure, Axes]:
+    """
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        - A pandas dataframe containing the diversity curve data
+    ax : Axes
+        - A Matplotlib.pyplot.Axes object to plot with. If `None` a new Figure and Axes 
+        will be created to plot on to. (Default: `None`.)
+    figsize : tuple[int, int]
+        - The size of the figure. (Default: `(16,8)`.)
+    palette : str|dict
+        - The name of the palette to use, or a custom defined dictionary. (Default: `'Set2'`)
+    hue : str
+        - The columns to set the hue on. Can be set as 'repertoire_id', 'condition', or None. (Default: `None.`)
+    legend : bool|str
+        - Display a legend. Use seaborn documentation. Can use “auto”, “brief”, “full”, or False. (Default: `'auto'`)
+    legend_title : str
+        - The title of the legend. (Default: `None`.)
+    title : str
+        - The title of the plot. (Default: `None`.)
 
+    Returns
+    -------
+    fig, ax : tuple[Figure, Axes]
+        - A tuple containing a Figure and Axes object from Matplotlib.pyplot
+    """
+    # Set up or bring in Figure
+    external_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.get_figure()
+        external_ax = True
+
+    df_q1 = df[df['q']==1].reset_index(drop=True)
+    df_q0 = df[df['q']==0].reset_index(drop=True)
+    assert df_q0.shape[0]==df_q1.shape[0], 'Unequal quantity of values for q=0 and q=1'
+
+    df_new = pd.DataFrame(columns=['repertoire_id', 'H_norm', 'condition'])
+    for i in range(len(df_q0)):
+        df_new.loc[i,'repertoire_id'] = df_q0.loc[i,'repertoire_id']
+        # df_new.loc[i,'H_norm'] = df_q1[df_q1['repertoire_id']==df_q0.loc[i,'repertoire_id']].loc[i,'d']/df_q0.loc[i,'d']
+        df_new.loc[i,'H_norm'] = np.log2(df_q1[df_q1['repertoire_id']==df_q0.loc[i,'repertoire_id']].loc[i,'d'])/np.log2(df_q0.loc[i,'d'])
+        df_new.loc[i,'condition'] = df_q0.loc[i,'condition']
+        
+    # Draw lineplot
+    sns.boxplot(
+        data=df_new,
+        x=hue,
+        y='H_norm'
+    )
+
+    # Set log scale
+    # ax.set_yscale('log')
+    ax.tick_params('x', rotation=45)
+
+    # Legend and formatting
+    if legend != False:
+        ax.legend(title=legend_title, bbox_to_anchor=(1, 1))
+    
+    if title:
+        ax.set_title(title)
+
+    # Only call tight_layout if fig was created
+    if not external_ax:
+        plt.tight_layout()
+
+    return fig, ax
+
+# Clonal Abundance
 def plot_clonal_abundance(
         df:pd.DataFrame,
         y_col:str='cumulative_abundance',
@@ -733,7 +768,65 @@ def plot_clonal_abundance(
         plt.tight_layout()
     
     return fig, ax
+
+# CDR3
+def plot_junction_aa_length(
+        df: pd.DataFrame,
+        x_col:str='CDR3_LENGTH',
+        y_col:str='CDR3_COUNT',
+        hue_col:str='condition',
+        palette:str='Set1',
+        figsize:tuple[int,int]=(18, 8),
+        log_scale:bool=False,
+        aa_range:tuple[int,int]=(6, 29),
+        ax:Axes=None
+    ) -> tuple[Figure, Axes]:
+    """
+    Plot grouped bar chart with error bars from combined dataframe.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        - A Pandas DataFrame with columns `gene`, `duplicate_frequency_avg`,
+        `duplicate_frequency_std`, `condition`
+    x_col : str
+        - The x-variable column name. (Default: `CDR3_LENGTH`)
+    y_col : str
+        - The y-variable column name. (Default: `CDR3_COUNT`)
+    hue_col : str
+        - The coloumn name to determine the hue color. (Default: `condition`)
+    palette : str
+        - The seaborn color palette used. (Default: `Set1`)
+    figsize : tuple
+        - The figure size. (Default:`(18,8)`)
+    log_scale : bool
+        - Place the y axis into a log scale. (Default: `False`)
+    aa_range : tuple[int,int]
+        - The range of amino acid positions to display. (Default: `(6,29)`.)
+    Returns
+    -------
+    fig, ax : tuple
+        - Matplotlib figure and axes objects
+    """
+    external_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.get_figure()
+        external_ax = True
     
+    sns.barplot(data=df, x=x_col, y=y_col, hue=hue_col, palette=palette, ax=ax)
+    if log_scale:
+        ax.set_yscale('log')
+    plt.xticks(rotation=90)
+    plt.tight_layout()
+    ax.set_xlim(aa_range[0], aa_range[1])
+
+    if external_ax:
+        plt.tight_layout()
+
+    return fig, ax
+
 def plot_cdr3_aa_sharing_heatmap(
         df:pd.DataFrame,
         cmap:str|dict='viridis',
@@ -784,13 +877,12 @@ def plot_cdr3_aa_sharing_heatmap(
 
     return fig, ax
 
-
 def plot_cdr3_sequence_count(
         df:pd.DataFrame,
         x_col:str='junction_aa',
         abundance:bool=False,
         top_n:int=None,
-        figsize:tuple[int,int]=(15, 6),
+        figsize:tuple[int,int]=(16,8),
         ax:Axes=None
     ) ->tuple[Figure, Axes]:
     """
@@ -838,5 +930,55 @@ def plot_cdr3_sequence_count(
 
     if not external_ax:
         plt.tight_layout()
+    
+    return fig, ax
+
+def plot_unique_number_of_cdr3(
+        df,
+        palette='Set2',
+        figsize=(16, 6)
+    ):
+    
+    fig, ax = plt.subplots(
+        1,
+        ncols=2,
+        figsize=figsize,
+        sharey=True,
+        gridspec_kw={'width_ratios': [4, 1]}
+    )
+    
+    sns.barplot(
+        data=df,
+        x='sample_id',
+        y='n_unique_cdr3',
+        hue='condition',
+        palette=palette,
+        ax=ax[0],
+        legend=False
+    )
+    
+    sns.boxplot(
+        data=df,
+        x='condition',
+        y='n_unique_cdr3',
+        hue='condition',
+        showmeans=True,
+        palette=palette,
+        ax=ax[1],
+        legend=True
+    )
+
+    sns.stripplot(
+        data=df,
+        x='condition',
+        y='n_unique_cdr3',
+        color='black',
+        dodge=True,
+        ax=ax[1]
+    )
+
+    ax[0].tick_params(axis = 'x', rotation = 90)
+    ax[1].tick_params(axis = 'x', rotation = 90)
+    ax[1].legend(title = 'Condition', bbox_to_anchor = (1, 1))
     
     return fig, ax
