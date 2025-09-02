@@ -565,7 +565,8 @@ def plot_diversity_curve(
         hue='condition',
         legend:bool|str='auto',
         legend_title:str=None,
-        title:str=None
+        title:str=None,
+        errorbar=None
     ) -> tuple[Figure, Axes]:
     """
     
@@ -603,15 +604,17 @@ def plot_diversity_curve(
         external_ax = True
 
     # Draw lineplot
-    sns.lineplot(data=df,
-                 x='q',
-                 y='d',
-                 markers=True,
-                 hue=hue,
-                 palette=palette,
-                 legend=legend,
-                 ax=ax)
-    # sns.lineplot(data=df, x='q', y='d', markers=True, palette=palette, ax=ax)
+    sns.lineplot(
+        data=df,
+        x='q',
+        y='d',
+        markers=True,
+        hue=hue,
+        palette=palette,
+        legend=legend,
+        ax=ax,
+        errorbar=errorbar
+    )
 
     # Set log scale
     ax.set_xscale('log')
@@ -720,8 +723,10 @@ def plot_clonal_abundance(
         y_col:str='cumulative_abundance',
         ax:Axes=None,
         figsize:tuple[int,int]=(16, 8),
+        title:str=None,
         legend_title:str=None,
-        plot_title:str=None
+        hue=None,
+        errorbar=None
     ) -> tuple[Figure, Axes]:
     """
     Plot the clonal abundance
@@ -737,10 +742,14 @@ def plot_clonal_abundance(
         a new Figure and Axes will be generated. (Default: `None`.)
     figsize : tuple[int, int]
         - The size of the figure. (Default: `(16, 8)`.)
+    title : str
+        - The title of the plot. (Default: `None`.)
     legend_title : str
         - The title of the legend. (Default: `None`.)
-    plot_title : str
-        - The title of the plot. (Default: `None`.)
+    hue : str
+        - The column in `df` to be used to split for groups. (Default: `None`.)
+    errorbar : str
+        - The type of errorbar to use as currently defined by seaborn lineplot. (Default: `None`.)
 
     Returns
     -------
@@ -755,13 +764,16 @@ def plot_clonal_abundance(
         fig = ax.get_figure()
         external_ax = True
 
-    sns.lineplot(data=df, x='rank', y=y_col, hue='condition', ax=ax)
+    sns.lineplot(data=df, x='rank', y=y_col, hue=hue, ax=ax, errorbar=errorbar)
     
-    # Legend and formatting
-    ax.legend(title=legend_title, bbox_to_anchor=(1,1))
+    ax.set_xscale('log')
 
-    if plot_title:
-        plt.title(plot_title)
+    # Legend and formatting
+    if legend_title:
+        ax.legend(title=legend_title, loc='upper center', bbox_to_anchor=(0.5,-0.05), ncol=1)
+    
+    if title:
+        ax.set_title(title)
     
     # Only call tight_layout if new fig was created
     if not external_ax:
