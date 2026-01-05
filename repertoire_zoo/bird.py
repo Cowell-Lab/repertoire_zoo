@@ -155,7 +155,8 @@ def load_gene_usage_group_data(
         call_type:str='v_call',
         level:str='gene',
         mode:str='proportion',
-        productive:bool=True
+        productive:bool=True,
+        threshold:float=None
     ) -> pd.DataFrame:
     """
     Load gene usage statistical data for a single group.
@@ -175,6 +176,8 @@ def load_gene_usage_group_data(
         - Can be `exists`, `proportion`, or `unique`. Default: `proportion`.
     processing_stage : str
         - The middle part of the filename path
+    threshold : float
+        - Define a duplicate frequency threshold to apear. Values are inclusive. (Default: `None`.)
 
     Returns
     -------
@@ -194,6 +197,19 @@ def load_gene_usage_group_data(
     df_combined = pd.concat(dfs, ignore_index=True)
     df_combined = df_combined.sort_values(by=['gene', 'condition'])
     df_combined = df_combined.reset_index(drop=True)
+    
+    # reduce df by threshold
+
+    ## will keep the group if at least one value in 'gene' is not 0
+    # if threshold is not None and isinstance(threshold, float):
+    #     df_combined.loc[:, 'duplicate_frequency_avg'] = df_combined['duplicate_frequency_avg'].where(df_combined['duplicate_frequency_avg'] >= threshold, 0)
+    #     df_combined = df_combined.groupby('gene').filter(lambda g: not (g['duplicate_frequency_avg'] == 0).all())
+
+    # will drop the group if all values of 'gene' in group are below threshold
+    if threshold is not None and isinstance(threshold, float):
+        df_combined = df_combined.groupby('gene').filter(
+            lambda g: (g['duplicate_frequency_avg'] >= threshold).any()
+        )
 
     return df_combined
 
@@ -334,7 +350,8 @@ def load_and_prepare_data_junction_aa(
 # need to update `level` parameter in doc_string below to have correct options listed.
 def load_and_prepare_data_vj_combo(
         repcalc_dir:str,
-        group_id:str,
+        group_id:str=None,
+        repertoire_groups:tuple[str, str]=None,
         combo_type:str='vj_combo',
         level:str='subgroup|subgroup',
         mode:str='proportion', 
@@ -349,7 +366,9 @@ def load_and_prepare_data_vj_combo(
     repcalc_dir : str
         - The base directory path.
     group_id : str
-        - The group ID.
+        - The repertoire group id.
+    repertoire_groups : list[tuple[str, str]]
+        - A list of tupels containg two strings: The repertoire group ID, and the repertoire group name.
     combo_type : str
         - The VDJ combination. (Default `vj_combo`.)
     level : str
@@ -369,11 +388,19 @@ def load_and_prepare_data_vj_combo(
         Contains the coloumns `v_level`, `j_level`, `duplicate_frequency_avg`,
         `duplicate_frequency_std`.
     """
-    path = f"{repcalc_dir}{group_id}{processing_stage}{combo_type}.tsv"
-    df = pd.read_csv(path, sep='\t')
+    dfs=[]
+    if group_id is not None:
+        repertoire_groups = [(group_id, group_id)]
+    for group_id, group_name, *_ in repertoire_groups:
+        path = f"{repcalc_dir}{group_id}{processing_stage}{combo_type}.tsv"
+        df = pd.read_csv(path, sep='\t')
+        df['condition'] = [group_name]*df.shape[0]
+        dfs.append(df)
+    df = pd.concat(dfs)
+        
     # check with Tanzira, added ==productive below since productive arg was not in use
     df = df[(df['level']==level) & (df['mode']==mode) & (df['productive']==productive)]
-    cols = ['v_level', 'j_level', 'duplicate_frequency_avg', 'duplicate_frequency_std']
+    cols = ['v_level', 'j_level', 'duplicate_frequency_avg', 'duplicate_frequency_std', 'condition']
     return df.loc[:, cols]
 
 def load_diversity_data(
@@ -470,11 +497,125 @@ def load_diversity_multiple_group_data(
 
 # TO DO: Check if group_name is actually a name or an ID. 
 # Using repcalc files, I noticed that there is group_id
+# def load_and_prepare_mutation_data(
+#         mutation_data_dir:str,
+#         group_id:str=None,
+#         repertoire_groups:tuple[str, str]=None,
+#         trim_codons:int=16,
+#         processing_stage:str='gene.mutations'
+#     ) -> pd.DataFrame:
+#     """
+#     Load and prepare mutation data for hedgehog plots
+
+#     Parameters
+#     ----------
+#     mutation_data_dir : str
+#         - Path to mutation data directory.
+#     group_id : str
+#         - The name of the group.
+#     trim_codons : int
+#         - The number of codons to trim. (Default: `16`.)
+#     processing_stage : str
+#         -  The current processing stage. Used for the file_path. (Default: `gene.mutations`.)
+
+#     Returns
+#     -------
+#     data : pd.DataFrame
+#         - The data required for the mutational hedgehog plot. Contains columns: `place`,
+#         `group`, `value`, `se`, `se_start`, `se_end`.
+#     """
+#     # --- Load the data ---
+#     file_path = f"{mutation_data_dir}{processing_stage}.repertoire_group.frequency.mutational_report.csv"
+#     #read the mutation data file
+#     group_muts = pd.read_csv(file_path, index_col='repertoire_group_id')
+
+#     # --- Helper functions ---
+#     def add_suffix(cols, suffix):
+#         return [f"{col}_{suffix}" for col in cols]
+
+#     # --- Define regions ---
+#     regions = {
+#         "FWR1": range(1, 27),
+#         "CDR1": range(27, 39),
+#         "FWR2": range(39, 56),
+#         "CDR2": range(56, 66),
+#         "FWR3": range(66, 105)
+#     }
+
+#     # --- Build column lists ---
+#     pos_cols_r_aa = [f"mu_freq_{i}_r_aa" for r in regions.values() for i in r]
+#     pos_cols_r_aa_avg = add_suffix(pos_cols_r_aa, "avg")
+#     pos_cols_r_aa_std = add_suffix(pos_cols_r_aa, "std")
+#     pos_cols_r_aa_N = add_suffix(pos_cols_r_aa, "N")
+
+#     # # --- Extract relevant data ---
+#     if group_id is not None:
+#         avg = group_muts.loc[group_id, pos_cols_r_aa_avg]
+#         std = group_muts.loc[group_id, pos_cols_r_aa_std]
+#         n = group_muts.loc[group_id, pos_cols_r_aa_N]
+#     else:
+#         group_ids = []
+#         for group_id, group_name, *_ in repertoire_groups:
+#             group_ids.append(group_id)
+#         avg = group_muts.loc[group_ids, pos_cols_r_aa_avg]
+#         std = group_muts.loc[group_ids, pos_cols_r_aa_std]
+#         n = group_muts.loc[group_ids, pos_cols_r_aa_N]
+
+#     np.seterr(divide='ignore', invalid='ignore')
+#     # can not divide if the index does not match (below)
+#     se = pd.Series((std.values / np.sqrt(n.values)), index = std.index)
+
+#     # Replace NaNs
+#     se = se.fillna(0)
+    
+#     # Trim codons
+#     avg.iloc[:trim_codons] = 0
+#     se.iloc[:trim_codons] = 0
+    
+#     # --- Build data for plotting ---
+#     def build_region_data(region_name, codon_range, avg, se, empty_bar=4):
+#         group, place, value, se_vals, se_start, se_end = [], [], [], [], [], []
+#         for i in codon_range:
+#             col = f"mu_freq_{i}_r_aa"
+#             group.append(region_name)
+#             place.append(i)
+#             v = avg.get(f"{col}_avg", 0)
+#             s = se.get(f"{col}_std", 0)
+#             value.append(v)
+#             se_vals.append(s)
+#             se_start.append(max(0, v - s))
+#             se_end.append(v + s)
+#         return group, place, value, se_vals, se_start, se_end
+
+#     # Compile final data
+#     group, place, value, se_vals, se_start, se_end = [], [], [], [], [], []
+#     for region_name, codon_range in regions.items():
+#         g, p, v, s, ss, se_ = build_region_data(region_name, codon_range, avg, se)
+#         group.extend(g)
+#         place.extend(p)
+#         value.extend(v)
+#         se_vals.extend(s)
+#         se_start.extend(ss)
+#         se_end.extend(se_)
+
+#     data = pd.DataFrame({
+#         "place": place,
+#         "group": group,
+#         "value": value,
+#         "se": se_vals,
+#         "se_start": se_start,
+#         "se_end": se_end
+#     })
+    
+#     # View result
+#     return data
+
 def load_and_prepare_mutation_data(
-        mutation_data_dir:str,
-        group_id:str,
-        trim_codons:int=16,
-        processing_stage:str='gene.mutations'
+        mutation_data_dir: str,
+        group_id: str = None,
+        repertoire_groups: list[tuple[str, str]] = None,
+        trim_codons: int = 16,
+        processing_stage: str = 'gene.mutations'
     ) -> pd.DataFrame:
     """
     Load and prepare mutation data for hedgehog plots
@@ -483,22 +624,22 @@ def load_and_prepare_mutation_data(
     ----------
     mutation_data_dir : str
         - Path to mutation data directory.
-    group_id : str
-        - The name of the group.
+    group_id : str, optional
+        - The name of a single group.
+    repertoire_groups : list of (group_id, group_name), optional
+        - A list of (id, name) tuples for multiple repertoire groups.
     trim_codons : int
         - The number of codons to trim. (Default: `16`.)
     processing_stage : str
-        -  The current processing stage. Used for the file_path. (Default: `gene.mutations`.)
+        - The current processing stage. Used for the file_path. (Default: `gene.mutations`.)
 
     Returns
     -------
     data : pd.DataFrame
-        - The data required for the mutational hedgehog plot. Contains columns: `place`,
-        `group`, `value`, `se`, `se_start`, `se_end`.
+        - Columns: `place`, `region`, `value`, `se`, `se_start`, `se_end`, `group_name`
     """
     # --- Load the data ---
     file_path = f"{mutation_data_dir}{processing_stage}.repertoire_group.frequency.mutational_report.csv"
-    #read the mutation data file
     group_muts = pd.read_csv(file_path, index_col='repertoire_group_id')
 
     # --- Helper functions ---
@@ -514,64 +655,50 @@ def load_and_prepare_mutation_data(
         "FWR3": range(66, 105)
     }
 
-    # --- Build column lists ---
     pos_cols_r_aa = [f"mu_freq_{i}_r_aa" for r in regions.values() for i in r]
     pos_cols_r_aa_avg = add_suffix(pos_cols_r_aa, "avg")
     pos_cols_r_aa_std = add_suffix(pos_cols_r_aa, "std")
     pos_cols_r_aa_N = add_suffix(pos_cols_r_aa, "N")
 
-    # # --- Extract relevant data ---
-    avg = group_muts.loc[group_id, pos_cols_r_aa_avg]
-    std = group_muts.loc[group_id, pos_cols_r_aa_std]
-    n = group_muts.loc[group_id, pos_cols_r_aa_N]
-    np.seterr(divide='ignore', invalid='ignore')
-    # can not divide if the index does not match (below)
-    se = pd.Series((std.values / np.sqrt(n.values)), index = std.index)
+    # --- Function to build per-group data ---
+    def build_group_data(group_id: str, group_name: str):
+        avg = group_muts.loc[group_id, pos_cols_r_aa_avg]
+        std = group_muts.loc[group_id, pos_cols_r_aa_std]
+        n = group_muts.loc[group_id, pos_cols_r_aa_N]
 
-    # Replace NaNs
-    se = se.fillna(0)
-    
-    # Trim codons
-    avg.iloc[:trim_codons] = 0
-    se.iloc[:trim_codons] = 0
-    
-    # --- Build data for plotting ---
-    def build_region_data(region_name, codon_range, avg, se, empty_bar=4):
-        group, place, value, se_vals, se_start, se_end = [], [], [], [], [], []
-        for i in codon_range:
-            col = f"mu_freq_{i}_r_aa"
-            group.append(region_name)
-            place.append(i)
-            v = avg.get(f"{col}_avg", 0)
-            s = se.get(f"{col}_std", 0)
-            value.append(v)
-            se_vals.append(s)
-            se_start.append(max(0, v - s))
-            se_end.append(v + s)
-        return group, place, value, se_vals, se_start, se_end
+        np.seterr(divide='ignore', invalid='ignore')
+        se = pd.Series((std.values / np.sqrt(n.values)), index=std.index).fillna(0)
 
-    # Compile final data
-    group, place, value, se_vals, se_start, se_end = [], [], [], [], [], []
-    for region_name, codon_range in regions.items():
-        g, p, v, s, ss, se_ = build_region_data(region_name, codon_range, avg, se)
-        group.extend(g)
-        place.extend(p)
-        value.extend(v)
-        se_vals.extend(s)
-        se_start.extend(ss)
-        se_end.extend(se_)
+        # Trim codons
+        avg.iloc[:trim_codons] = 0
+        se.iloc[:trim_codons] = 0
 
-    data = pd.DataFrame({
-        "place": place,
-        "group": group,
-        "value": value,
-        "se": se_vals,
-        "se_start": se_start,
-        "se_end": se_end
-    })
-    
-    # View result
-    return data
+        # Build region data
+        rows = []
+        for region_name, codon_range in regions.items():
+            for i in codon_range:
+                col = f"mu_freq_{i}_r_aa"
+                v = avg.get(f"{col}_avg", 0)
+                s = se.get(f"{col}_std", 0)
+                rows.append({
+                    "place": i,
+                    "region": region_name, # new
+                    "value": v,
+                    "se": s,
+                    "se_start": max(0, v - s),
+                    "se_end": v + s,
+                    "group_name": group_name
+                })
+        return pd.DataFrame(rows)
+
+    # --- Single or multiple groups ---
+    if group_id is not None:
+        return build_group_data(group_id, group_id)
+    elif repertoire_groups is not None:
+        dfs = [build_group_data(group_id, group_name) for group_id, group_name, *_ in repertoire_groups]
+        return pd.concat(dfs, ignore_index=True)
+    else:
+        raise ValueError("Provide either group_id or repertoire_groups")
 
 def load_shared_cdr3_aa_data(
         repcalc_dir, 
@@ -764,9 +891,9 @@ def load_and_prepare_group_summary_comparison(
     
     return df
 
-def load_and_prepare_clonal_abundance_data(data_dir, repertoires ,clone_tool='repcalc', processing_stage='igblast.allele.clone'):
+def load_and_prepare_clonal_abundance_data(data_dir, repertoires, clone_tool='repcalc', processing_stage='igblast.allele.clone', internal=False):
     dfs = []
-    for repertoire_id, condition_name in repertoires:
+    for repertoire_id, condition_name, sample_id in repertoires:
         if clone_tool == 'repcalc':
             path = f"{data_dir}{repertoire_id}.{processing_stage}.count.tsv"
             col = 'copy_freq'
@@ -779,24 +906,86 @@ def load_and_prepare_clonal_abundance_data(data_dir, repertoires ,clone_tool='re
         df = df.rename(columns={col: 'abundance'})
         df['cumulative_abundance'] = df.abundance.transform('cumsum')
         df['condition'] = condition_name
+        # df['clones'] = df.shape[0]
+        if internal:
+            df['sample_id'] = sample_id
         dfs.append(df)
     df = pd.concat(dfs, ignore_index=True)    
     return df
 
-def load_and_prepare_clonal_abundance_group_data(data_dir, groups, all_groups, clone_tool='repcalc', processing_stage='igblast.allele.clone'):
+def load_and_prepare_clonal_abundance_group_data(data_dir, groups, all_groups, all_repertoires, clone_tool='repcalc', processing_stage='igblast.allele.clone'):
     dfs = []
     for (group_id, *_) in groups:
         repertoires = []
         for rep in all_groups[group_id]['repertoires']:
-            repertoires.append([rep['repertoire_id'], all_groups[group_id]['repertoire_group_name']])
+            repertoires.append([rep['repertoire_id'], all_groups[group_id]['repertoire_group_name'], all_repertoires[rep['repertoire_id']]['sample'][0]['sample_id']])
         
         df = load_and_prepare_clonal_abundance_data(
             data_dir=data_dir,
             repertoires=repertoires,
             clone_tool=clone_tool,
-            processing_stage=processing_stage
+            processing_stage=processing_stage,
+            internal=True
         )
     
         dfs.append(df)
     df = pd.concat(dfs)
     return df
+
+# def load_shared_cdr3_aa_data(
+#         repcalc_dir, 
+#         repertoire_groups, 
+#         sample_info_df, 
+#         groups, 
+#         percentage=False,
+#         similarity_metric='jaccard',
+#         sharing='cdr3_aa_sharing',
+#         processing_stage='repertoire.shared.matrix',
+#         plot_type='between'
+#     ):
+#     """
+#     Load and process cdr3 data for plotting.
+    
+#     Returns:
+#     - matrix: processed DataFrame ready for heatmap
+#     """
+
+#     path = f"{repcalc_dir}{processing_stage}.{sharing}.tsv"
+#     df = pd.read_csv(path, sep='\t', index_col=0)
+
+#     if percentage:
+#         df = similarity_calculation(df, similarity_metric)
+        
+#     groups_repertoire_ids = {}
+#     groups_sample_ids = {}
+#     for group_id, condition, *_ in groups:
+#         repertoire_ids = []
+#         sample_ids = []
+#         for item in repertoire_groups[group_id]['repertoires']:
+#             repertoire_id = item['repertoire_id'].strip()
+#             sample_id = sample_info_df.loc[sample_info_df.repertoire_id == repertoire_id, 'ss_id'].values[0]
+#             repertoire_ids.append(repertoire_id)
+#             sample_ids.append(sample_id)
+#         groups_repertoire_ids[condition] = repertoire_ids
+#         groups_sample_ids[condition] = sample_ids
+
+#     if plot_type == 'within':
+#         # One group only
+#         assert len(groups_repertoire_ids) == 1, "Within group plot requires exactly 1 group"
+#         cond1 = cond2 = list(groups_repertoire_ids.keys())[0]
+#     elif plot_type == 'between':
+#         # Two groups
+#         assert len(groups_repertoire_ids) == 2, "Between group plot requires exactly 2 groups"
+#         cond1, cond2 = list(groups_repertoire_ids.keys())
+#     else:
+#         raise ValueError("plot_type must be 'within' or 'between'")
+        
+#     ids1 = groups_repertoire_ids[cond1]
+#     ids2 = groups_repertoire_ids[cond2]
+#     matrix = df.loc[ids1, ids2]
+#     matrix.index = groups_sample_ids[cond1]
+#     matrix.columns = groups_sample_ids[cond2]
+#     matrix.index.name = cond1
+#     matrix.columns.name = cond2
+    
+#     return matrix

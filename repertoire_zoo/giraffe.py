@@ -54,8 +54,9 @@ def plot_gene_usage_groups(
         predefined color palette. This currently supports up to 5 groups).
     figsize : tuple
         - The figure size. (Default:`(16,8)`)
-    title : str
-        - The plot's title (optional, Default: `None`)
+    title : str | dict, optional
+        Optional title for the axis. A dictionary can be passed to set other **kwargs for `ax.set_title()`.
+        (optional, Default: `None`)
 
     Returns
     -------
@@ -119,20 +120,21 @@ def plot_gene_usage_groups(
     ax.set_xlabel('Gene Family')
     ax.grid(True)
     ax.legend(title='Condition', loc='upper left', bbox_to_anchor=(1, 1))
-
-    if title is None:
-        title = 'TCR Family Usage: ' + ' vs '.join(conditions)
-    ax.set_title(title)
+    
+    if title:
+        if isinstance(title, dict):
+            ax.set_title(title.pop('t'), **title)
+        else:
+            ax.set_title(title)
 
     plt.tight_layout()
     return fig, ax
 
 def plot_duplicate_frequency(
         df:pd.DataFrame,
-        datapoints:bool=True,
         errorbar:str=None,
         figsize:tuple=(16,8),
-        title:str=None,
+        title:str|dict=None,
         hue=None,
         hue_order=None,
         palette:dict=None,
@@ -151,8 +153,6 @@ def plot_duplicate_frequency(
     df : pd.DataFrame
         - A Pandas DataFrame with columns `gene`, `N`, `duplicate_frequency_avg`,
         `duplicate_frequency_std`, `condition`
-    datapoints : bool
-        - Displays the data points on the bars. (Default: `True`.)
     errorbar : str
         - Display the error bar using defined method: `sd`, `se`. `sd` is for the standard deviation
          while `se` reports the standard error. (Default: None.)
@@ -161,8 +161,9 @@ def plot_duplicate_frequency(
         uses a predefined color palette. This currently supports up to 5 groups)
     figsize : tuple
         - The figure size. (Default:`(16,8)`)
-    title : str
-        - The plot's title (optional, Default: `None`)
+    title : str | dict, optional
+        Optional title for the axis. A dictionary can be passed to set other **kwargs for `ax.set_title()`.
+        (optional, Default: `None`)
     threshold : float
         - Define a duplicate frequency threshold to apear. Values are inclusive. (Default: `None`.)
     ylim : tuple[float, float]
@@ -193,92 +194,329 @@ def plot_duplicate_frequency(
         palette = 'Set2'
     if hue is None:
         hue='gene'
+    if not split:
+        hue_order=None
 
     # reduce df by threshold
-    if threshold is not None and isinstance(threshold, float):
-        df['duplicate_frequency_avg'] = df['duplicate_frequency_avg'].where(df['duplicate_frequency_avg'] >= threshold, 0)
-        if split:
-            df = df.groupby('gene').filter(lambda g: not (g['duplicate_frequency_avg'] == 0).all())
-    else:
-        df = df.copy()
 
+    ## will keep the group if at least one value in 'gene' is not 0
+    # if threshold is not None and isinstance(threshold, float):
+    #     df.loc[:, 'duplicate_frequency_avg'] = df['duplicate_frequency_avg'].where(df['duplicate_frequency_avg'] >= threshold, 0)
+    #     df = df.groupby('gene').filter(lambda g: not (g['duplicate_frequency_avg'] == 0).all())
+    
+    # will drop the group if all values of 'gene' in group are below threshold
+    if threshold is not None and isinstance(threshold, float):
+        df = df.groupby('gene').filter(
+            lambda g: (g['duplicate_frequency'] >= threshold).any()
+        )
+
+    if categories is not None:
+        df = df[df['gene'].isin(categories)].copy()
+        # df.loc[:, 'gene'] = df['gene'].where(df['gene'].isin(categories))
+        placeholder_rows = []
+        for cat in categories:
+            if cat not in df['gene'].unique():
+                print(f"Warning: category {cat} has no data")
+                row = {'gene':cat}
+                row['duplicate_frequency_avg'] = 0
+                row['condition'] = hue_order[0]
+                placeholder_rows.append(row)
+        df_placeholders = pd.DataFrame(placeholder_rows)
+        df = pd.concat([df, df_placeholders], ignore_index=True)
+                
     if not split:
         sns.barplot(
             data=df,
             x='gene',
             y='duplicate_frequency_avg',
             hue=hue,
-            legend=False,
             palette=palette,
             # hue_order=hue_order,
             order=categories if categories is not None else None,
             capsize=0.3,
-            ax=ax
+            ax=ax,
+            legend=legend,
+            errorbar=None
         ) 
-        if categories is not None:
-            ax.set_xticks(range(len(categories)))
-            ax.set_xticklabels(categories)
     else:
         sns.barplot(
             data=df,
             x='gene',
             y='duplicate_frequency_avg',
             hue='condition',
-            ax=ax
+            ax=ax,
+            legend=legend,
+            hue_order=hue_order,
+            palette=palette,
+            order=categories if categories is not None else None
         )
 
-        # ax.legend(title='Category', loc='upper left', fontsize='small')
+    # errorbars
+    def bar_width_from_data_coord_to_pt(ax, x, width):
+        """
+        Convert the width of a bar from data coordinates to points.
 
+        Parameters
+        ----------
+        ax : Axes
+        bar : 
 
-    if errorbar=='sd':
-        # Loop through each bar (patch) and add error bars at the correct positions
-        for bar, err in zip(ax.patches, df['duplicate_frequency_std']):
-            # Center of the bar
-            x_center = bar.get_x() + bar.get_width() / 2
-            y_top = bar.get_height()
+        Returns
+        -------
+        width_pt : float
+            - The width of the passed bar in points.
+        """
+        # data -> display coord sys
+        x0, _ = ax.transData.transform((x, 0))
+        x1, _ = ax.transData.transform((x + width, 0))
+        width_px = x1 - x0
+
+        # px -> in -> pt
+        width_in = width_px/ax.figure.dpi
+        width_pt = width_in*72
+
+        return width_pt
+
+    if errorbar is not None:
+        total_width = 0.8  # typical bar width
+        n_hues = len(hue_order) if hue_order else 1
+        bar_width = total_width / n_hues
+
+        x_order = [e.get_text() for e in ax.get_xticklabels()]
+        for _, row in df.iterrows():
+            x_index = x_order.index(row['gene'])
             
-            ax.errorbar(
-                x=x_center,
-                y=y_top,
-                yerr=err,
-                fmt='none',
-                ecolor='black',
-                capsize=5
-            )
-    if errorbar=='se':
-        # Loop through each bar (patch) and add error bars at the correct positions
-        for bar, err in zip(ax.patches, df['duplicate_frequency_std']/np.sqrt(df['N'])):
-            # Center of the bar
-            x_center = bar.get_x() + bar.get_width() / 2
-            y_top = bar.get_height()
-            
-            ax.errorbar(
-                x=x_center,
-                y=y_top,
-                yerr=err,
-                fmt='none',
-                ecolor='black',
-                capsize=5
-            )
+            if hue_order:
+                hue_index = hue_order.index(row['condition'])
+                x_center = x_index - total_width/2 + bar_width/2 + hue_index*bar_width
+            else:
+                x_center = x_index
 
+            if errorbar=='sd':
+                ax.errorbar(
+                    x=x_center,
+                    y=row['duplicate_frequency_avg'],
+                    yerr=row['duplicate_frequency_std'],
+                    fmt='none',
+                    ecolor='black',
+                    capsize=0.25*bar_width_from_data_coord_to_pt(ax, x_center - bar_width/2, bar_width)
+                )
+
+            if errorbar=='se':
+                ax.errorbar(
+                    x=x_center,
+                    y=row['duplicate_frequency_avg'],
+                    yerr=row['duplicate_frequency_std']/np.sqrt(row['N']),
+                    fmt='none',
+                    ecolor='black',
+                    capsize=0.25*bar_width_from_data_coord_to_pt(ax, x_center - bar_width/2, bar_width)
+                )
+            
     ax.tick_params(axis='x', rotation=90)
 
-    if legend:
-        ax.legend(
-            title='Category',
-            loc='center left',
-            bbox_to_anchor=(1, 0.5),
-            fontsize='small'
-        )
-
     if title:
-        ax.set_title(title, size=14)
+        if isinstance(title, dict):
+            ax.set_title(title.pop('t'), **title)
+        else:
+            ax.set_title(title)
     
     if ylim[0] is not None or ylim[1] is not None:
         ax.set_ylim(bottom=ylim[0], top=ylim[1])
 
-    if external_ax:
-        plt.tight_layout()
+    return fig, ax
+
+def plot_ratio(
+        df:pd.DataFrame,
+        region:str='mu_ratio_fwr',
+        errorbar:str=None,
+        figsize:tuple=(16,8),
+        title:str|dict=None,
+        hue=None,
+        hue_order=None,
+        palette:dict=None,
+        threshold:float=None,
+        ylim:tuple[float,float]=(None,None),
+        ax:Axes=None,
+        split:bool=False,
+        categories:list=None,
+        legend:bool=False
+    ) -> tuple[Figure, Axes]:
+    """
+    Plot grouped bar chart with error bars from combined dataframe.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        - A Pandas DataFrame with columns `gene`, `N`, `duplicate_frequency_avg`,
+        `duplicate_frequency_std`, `condition`
+    errorbar : str
+        - Display the error bar using defined method: `sd`, `se`. `sd` is for the standard deviation
+         while `se` reports the standard error. (Default: None.)
+    palette : list
+        - A list of colors for each condition. (optional, Default: `None`.)
+        uses a predefined color palette. This currently supports up to 5 groups)
+    figsize : tuple
+        - The figure size. (Default:`(16,8)`)
+    title : str | dict, optional
+        Optional title for the axis. A dictionary can be passed to set other **kwargs for `ax.set_title()`.
+        (optional, Default: `None`)
+    threshold : float
+        - Define a duplicate frequency threshold to apear. Values are inclusive. (Default: `None`.)
+    ylim : tuple[float, float]
+        - Define the y-axim limit. If a tuple is provided, then read as [min, max]. 
+        It is also possible to define the tuple using `None` to denote automatic limits. 
+        (Default: `(None, None)`.)
+    ax : Axes
+        - A `matplotlib.axes.Axes` object to plot with. (Deafult: `None`.)
+    categories : list
+        - A list of strings of the names of categories to plot on x-axis
+
+    Returns
+    -------
+    fig, ax : tuple
+        - Matplotlib figure and axes objects
+    """
+    external_ax = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.get_figure()
+        external_ax = True
+
+    # Determine hue order
+    if hue_order is None and isinstance(palette, dict):
+        hue_order = list(palette.keys())
+    if hue is not None and palette is None:
+        palette = 'Set2'
+    if hue is None:
+        hue='repertoire_group_name'
+    if not split:
+        hue_order=None
+
+    # reduce df by threshold
+
+    ## will keep the group if at least one value in 'gene' is not 0
+    # if threshold is not None and isinstance(threshold, float):
+    #     df.loc[:, 'duplicate_frequency_avg'] = df['duplicate_frequency_avg'].where(df['duplicate_frequency_avg'] >= threshold, 0)
+    #     df = df.groupby('gene').filter(lambda g: not (g['duplicate_frequency_avg'] == 0).all())
+    
+    # will drop the group if all values of 'gene' in group are below threshold
+    # if threshold is not None and isinstance(threshold, float):
+    #     df = df.groupby('gene').filter(
+    #         lambda g: (g['duplicate_frequency'] >= threshold).any()
+    #     )
+
+    # if categories is not None:
+    #     df = df[df['gene'].isin(categories)].copy()
+    #     # df.loc[:, 'gene'] = df['gene'].where(df['gene'].isin(categories))
+    #     placeholder_rows = []
+    #     for cat in categories:
+    #         if cat not in df['gene'].unique():
+    #             print(f"Warning: category {cat} has no data")
+    #             row = {'gene':cat}
+    #             row['duplicate_frequency_avg'] = 0
+    #             row['condition'] = hue_order[0]
+    #             placeholder_rows.append(row)
+    #     df_placeholders = pd.DataFrame(placeholder_rows)
+    #     df = pd.concat([df, df_placeholders], ignore_index=True)
+                
+    if not split:
+        sns.barplot(
+            data=df,
+            x='repertoire_group_name',
+            y=region+'_avg',
+            hue=hue,
+            palette=palette,
+            # hue_order=hue_order,
+            order=categories if categories is not None else None,
+            capsize=0.3,
+            ax=ax,
+            legend=legend,
+            errorbar=None
+        ) 
+    else:
+        sns.barplot(
+            data=df,
+            x='repertoire_group_name',
+            y=region+'_avg',
+            hue='repertoire_group_name',
+            ax=ax,
+            legend=legend,
+            hue_order=hue_order,
+            order=categories if categories is not None else None
+        )
+
+    # errorbars
+    def bar_width_from_data_coord_to_pt(ax, x, width):
+        """
+        Convert the width of a bar from data coordinates to points.
+
+        Parameters
+        ----------
+        ax : Axes
+        bar : 
+
+        Returns
+        -------
+        width_pt : float
+            - The width of the passed bar in points.
+        """
+        # data -> display coord sys
+        x0, _ = ax.transData.transform((x, 0))
+        x1, _ = ax.transData.transform((x + width, 0))
+        width_px = x1 - x0
+
+        # px -> in -> pt
+        width_in = width_px/ax.figure.dpi
+        width_pt = width_in*72
+
+        return width_pt
+
+    if errorbar is not None:
+        total_width = 0.8  # typical bar width
+        n_hues = len(hue_order) if hue_order else 1
+        bar_width = total_width / n_hues
+
+        x_order = [e.get_text() for e in ax.get_xticklabels()]
+        for _, row in df.iterrows():
+            x_index = x_order.index(row['repertoire_group_name'])
+            
+            if hue_order:
+                hue_index = hue_order.index(row['repertoire_group_name'])
+                x_center = x_index - total_width/2 + bar_width/2 + hue_index*bar_width
+            else:
+                x_center = x_index
+
+            if errorbar=='sd':
+                ax.errorbar(
+                    x=x_center,
+                    y=row[region+'_avg'],
+                    yerr=row[region+'_std'],
+                    fmt='none',
+                    ecolor='black',
+                    capsize=0.25*bar_width_from_data_coord_to_pt(ax, x_center - bar_width/2, bar_width)
+                )
+
+            if errorbar=='se':
+                ax.errorbar(
+                    x=x_center,
+                    y=row[region+'_avg'],
+                    yerr=row[region+'_std']/np.sqrt(row[region+'_N']),
+                    fmt='none',
+                    ecolor='black',
+                    capsize=0.25*bar_width_from_data_coord_to_pt(ax, x_center - bar_width/2, bar_width)
+                )
+            
+    ax.tick_params(axis='x', rotation=90)
+
+    if title:
+        if isinstance(title, dict):
+            ax.set_title(title.pop('t'), **title)
+        else:
+            ax.set_title(title)
+    
+    if ylim[0] is not None or ylim[1] is not None:
+        ax.set_ylim(bottom=ylim[0], top=ylim[1])
 
     return fig, ax
 
@@ -362,15 +600,23 @@ def plot_vj_chord_diagram(
             text_size = 15
         else:
             text_size = 20
-        circos.text(
-            title,
-            size=text_size,
-            deg=0,
-            r=140
-        )
+        if isinstance(title, str):
+            circos.text(
+                title,
+                size=text_size,
+                deg=0,
+                r=140
+            )
+        else:
+            circos.text(
+                title['t'],
+                size=title.get('fontsize', 16),
+                deg=title.get('deg', 0),
+                r=title.get('r', 140)
+            )
 
-    if not external_ax:
-        plt.tight_layout()
+    # if not external_ax:
+    #     plt.tight_layout()
 
     circos.plotfig(figsize=figsize, ax=ax)
 
@@ -405,8 +651,9 @@ def plot_mutational_hedgehog(
         - Seaborn color pallete (Default: `tab20`.)
     figsize : tuple[int, int]
         - The figure size. (Default: `(10, 10)`.)
-    title : str
-        - The title of the plot. (Default: `None`.)
+    title : str | dict, optional
+        Optional title for the axis. A dictionary can be passed to set other **kwargs for `ax.set_title()`.
+        (optional, Default: `None`)
     y_max : int
         - The maximum y value displayed. Can be used to set plots to the same scale. (Default: `None`.)
     ax : Axes
@@ -427,27 +674,27 @@ def plot_mutational_hedgehog(
         external_ax = True
     
     values = df["value"].values
-    groups = df["group"].values
-
-    #Keep the group orientation as is.
-    unique_groups = pd.unique(groups)
-    groups_sizes = [len(group_df) for _, group_df in df.groupby("group", sort=False)]
+    regions = df["region"].values
 
     # Calculate max y value
     if y_max is None:
         y_max = np.max(values)
     y_min = -0.1
 
+    #Keep the group orientation as is.
+    unique_regions = pd.unique(regions)
+    regions_sizes = [len(group_df) for _, group_df in df.groupby("region", sort=False)]
+
     # Calculate angles and width
-    num_angles = len(values) + pad * len(unique_groups)
+    num_angles = len(values) + pad * len(unique_regions)
     angles = np.linspace(0, 2 * np.pi, num=num_angles, endpoint=False)
     width = (2 * np.pi) / len(angles)
 
     # Choose a seaborn palette
-    my_palette = sns.color_palette(pallete, len(unique_groups))
+    my_palette = sns.color_palette(pallete, len(unique_regions))
     # Assign colors to groups based on the palette
-    group_to_color = dict(zip(unique_groups, my_palette))
-    colors = [group_to_color[group] for group in groups]
+    group_to_color = dict(zip(unique_regions, my_palette))
+    colors = [group_to_color[region] for region in regions]
 
     # Generate points from start to y_max, with num_intervals steps
     ref_pts = np.linspace(start, y_max, num_intervals)
@@ -457,7 +704,7 @@ def plot_mutational_hedgehog(
     #start plotting
     offset = 0
     idxs = []
-    for size in groups_sizes:
+    for size in regions_sizes:
         idxs += list(range(offset + pad, offset + size + pad))
         offset += size + pad
 
@@ -467,6 +714,7 @@ def plot_mutational_hedgehog(
     ax.set_theta_offset(np.pi / 2)
     ax.set_theta_direction(-1) #Change the plot direction from anticlockwise to clockwise
     ax.set_ylim([y_min, y_max])
+
     ax.bar(
         angles[idxs],
         values,
@@ -477,13 +725,12 @@ def plot_mutational_hedgehog(
         linewidth=1,
         error_kw={'elinewidth': 2}
     )
-
     # This iterates over the sizes of the groups adding reference
     offset = 0
     delta = 0.01
-    for group, size in zip(unique_groups, groups_sizes):
+    for region, size in zip(unique_regions, regions_sizes):
         #for each group minimum and maximum id
-        min_idx, max_idx = df[df.group == group].place.min(), df[df.group == group].place.max()
+        min_idx, max_idx = df[df.region == region].place.min(), df[df.region == region].place.max()
 
         # Add line below bars
         x1 = np.linspace(angles[offset + pad], angles[offset + size + pad - 1], num=50)
@@ -493,7 +740,7 @@ def plot_mutational_hedgehog(
         ax.text(
             np.mean(x1),
             -3*delta,
-            group,
+            region,
             color="black",
             fontsize=10,
             fontweight="bold",
@@ -523,36 +770,39 @@ def plot_mutational_hedgehog(
         )
 
         # Add reference lines at
-        x2 = np.linspace(angles[offset], angles[offset + pad - 1], num=50)
-        for rp in ref_pt:
-            ax.plot(
-                x2,
-                rp*50,
-                color="gray",
-                lw=1
-            )
-            ax.text(
-                0.09,
-                rp[0]-delta,
-                f'{rp[0]}',
-                color="black",
-                ha='center',
-                va='top',
-                fontsize=9
-            )
+        # x2 = np.linspace(angles[offset], angles[offset + pad - 1], num=50)
+        # for rp in ref_pt:
+        #     ax.plot(
+        #         x2,
+        #         rp*50,
+        #         color="gray",
+        #         lw=1
+        #     )
+        #     ax.text(
+        #         0.09,
+        #         rp[0]-delta,
+        #         f'{rp[0]}',
+        #         color="black",
+        #         ha='center',
+        #         va='top',
+        #         fontsize=9
+        #     )
         offset += size + pad
 
-    ax.set_frame_on(False)
-    ax.xaxis.grid(False)
-    ax.yaxis.grid(False)
+    # ax.set_frame_on(False)
+    # ax.xaxis.grid(False)
+    # ax.yaxis.grid(False)
     ax.set_xticks([])
     ax.set_yticks([])
     
     if title:
-        ax.set_title(title, fontdict={'fontsize':20})
+        if isinstance(title, dict):
+            ax.set_title(title.pop('t'), **title)
+        else:
+            ax.set_title(title)
     
-    if external_ax:
-        plt.tight_layout()
+    # if external_ax:
+    #     plt.tight_layout()
     
     return fig, ax
 
@@ -587,8 +837,9 @@ def plot_diversity_curve(
         - Display a legend. Use seaborn documentation. Can use “auto”, “brief”, “full”, or False. (Default: `'auto'`)
     legend_title : str
         - The title of the legend. (Default: `None`.)
-    plot_title : str
-        - The title of the plot. (Default: `None`.)
+    title : str | dict, optional
+        Optional title for the axis. A dictionary can be passed to set other **kwargs for `ax.set_title()`.
+        (optional, Default: `None`)
 
     Returns
     -------
@@ -629,7 +880,10 @@ def plot_diversity_curve(
         ax.legend(title=legend_title, bbox_to_anchor=(1, 1))
     
     if title:
-        ax.set_title(title)
+        if isinstance(title, dict):
+            ax.set_title(title.pop('t'), **title)
+        else:
+            ax.set_title(title)
 
     # Only call tight_layout if fig was created
     if not external_ax:
@@ -666,8 +920,9 @@ def plot_diversity_boxplot(
         - Display a legend. Use seaborn documentation. Can use “auto”, “brief”, “full”, or False. (Default: `'auto'`)
     legend_title : str
         - The title of the legend. (Default: `None`.)
-    title : str
-        - The title of the plot. (Default: `None`.)
+    title : str | dict, optional
+        Optional title for the axis. A dictionary can be passed to set other **kwargs for `ax.set_title()`.
+        (optional, Default: `None`)
 
     Returns
     -------
@@ -709,7 +964,10 @@ def plot_diversity_boxplot(
         ax.legend(title=legend_title, bbox_to_anchor=(1, 1))
     
     if title:
-        ax.set_title(title)
+        if isinstance(title, dict):
+            ax.set_title(title.pop('t'), **title)
+        else:
+            ax.set_title(title)
 
     # Only call tight_layout if fig was created
     if not external_ax:
@@ -742,8 +1000,9 @@ def plot_clonal_abundance(
         a new Figure and Axes will be generated. (Default: `None`.)
     figsize : tuple[int, int]
         - The size of the figure. (Default: `(16, 8)`.)
-    title : str
-        - The title of the plot. (Default: `None`.)
+    title : str | dict, optional
+        Optional title for the axis. A dictionary can be passed to set other **kwargs for `ax.set_title()`.
+        (optional, Default: `None`)
     legend_title : str
         - The title of the legend. (Default: `None`.)
     hue : str
@@ -770,10 +1029,13 @@ def plot_clonal_abundance(
 
     # Legend and formatting
     if legend_title:
-        ax.legend(title=legend_title, loc='upper center', bbox_to_anchor=(0.5,-0.05), ncol=1)
+        ax.legend(title=legend_title, loc='upper center', bbox_to_anchor=(0.5,-0.1), ncol=1)
     
     if title:
-        ax.set_title(title)
+        if isinstance(title, dict):
+            ax.set_title(title.pop('t'), **title)
+        else:
+            ax.set_title(title)
     
     # Only call tight_layout if new fig was created
     if not external_ax:
@@ -786,8 +1048,10 @@ def plot_junction_aa_length(
         df: pd.DataFrame,
         x_col:str='CDR3_LENGTH',
         y_col:str='CDR3_COUNT',
+        title:str|dict=None,
         hue_col:str='condition',
         palette:str='Set1',
+        legend:str=None,
         figsize:tuple[int,int]=(18, 8),
         log_scale:bool=False,
         aa_range:tuple[int,int]=(6, 29),
@@ -805,6 +1069,9 @@ def plot_junction_aa_length(
         - The x-variable column name. (Default: `CDR3_LENGTH`)
     y_col : str
         - The y-variable column name. (Default: `CDR3_COUNT`)
+    title : str | dict, optional
+        Optional title for the axis. A dictionary can be passed to set other **kwargs for `ax.set_title()`.
+        (optional, Default: `None`)
     hue_col : str
         - The coloumn name to determine the hue color. (Default: `condition`)
     palette : str
@@ -827,15 +1094,29 @@ def plot_junction_aa_length(
         fig = ax.get_figure()
         external_ax = True
     
-    sns.barplot(data=df, x=x_col, y=y_col, hue=hue_col, palette=palette, ax=ax)
+    sns.barplot(
+        data=df,
+        x=x_col,
+        y=y_col,
+        hue=hue_col,
+        palette=palette,
+        ax=ax,
+        legend=legend
+    )
     if log_scale:
         ax.set_yscale('log')
-    plt.xticks(rotation=90)
-    plt.tight_layout()
+        
+    # ax.tick_params(axis='x', labelrotation=45)
     ax.set_xlim(aa_range[0], aa_range[1])
 
-    if external_ax:
-        plt.tight_layout()
+    if title:
+        if isinstance(title, dict):
+            ax.set_title(title.pop('t'), **title)
+        else:
+            ax.set_title(title)
+
+    if not external_ax:
+        fig.tight_layout()
 
     return fig, ax
 
@@ -843,6 +1124,7 @@ def plot_cdr3_aa_sharing_heatmap(
         df:pd.DataFrame,
         cmap:str|dict='viridis',
         figsize=(20, 15),
+        title:str|dict=None,
         ax:Axes=None
     ) -> tuple[Figure, Axes]:
     """
@@ -857,6 +1139,9 @@ def plot_cdr3_aa_sharing_heatmap(
         with a seaborn colormap, or a custom defined dictionary. (Default: `'viridis'`.)
     figsize : tuple[int, int]
         - The size of the figure. (Default: `(20,15)`.)
+    title : str | dict, optional
+        Optional title for the axis. A dictionary can be passed to set other **kwargs for `ax.set_title()`.
+        (optional, Default: `None`)
     ax : Axes
         - A matplotlib.pyplot.Axes object to plot on to. If an Axes object is not provided
         a new Figure and Axes will be generated. (Default: `None`.)
@@ -879,10 +1164,16 @@ def plot_cdr3_aa_sharing_heatmap(
     else:
         fmt = '.2f'
     
-    sns.heatmap(df, annot=True, fmt=fmt, cmap = cmap, annot_kws={"size": 10}, ax=ax)
+    sns.heatmap(df, annot=True, fmt=fmt, cmap = cmap, ax=ax)
     
     ax.tick_params(axis = 'x', rotation=90)
     
+    if title:
+        if isinstance(title, dict):
+            ax.set_title(title.pop('t'), **title)
+        else:
+            ax.set_title(title)
+
     # Only call tight_layout if new fig was created
     if not external_ax:
         plt.tight_layout()
@@ -895,6 +1186,7 @@ def plot_cdr3_sequence_count(
         abundance:bool=False,
         top_n:int=None,
         figsize:tuple[int,int]=(16,8),
+        title:str|dict=None,
         ax:Axes=None
     ) ->tuple[Figure, Axes]:
     """
@@ -913,6 +1205,9 @@ def plot_cdr3_sequence_count(
         (Default: `None`.)
     figsize : tuple[int, int]
         - Size of the Figure
+    title : str | dict, optional
+        Optional title for the axis. A dictionary can be passed to set other **kwargs for `ax.set_title()`.
+        (optional, Default: `None`)
     ax : Axes
         - A matplotlib.pyplot.Axes object to plot on to. If an Axes object is not provided
         a new Figure and Axes will be generated. (Default: `None`.)
@@ -940,6 +1235,12 @@ def plot_cdr3_sequence_count(
     sns.barplot(data=df, x=x_col, y=y_col, ax=ax)
     ax.tick_params(axis='x', rotation=90)
 
+    if title:
+        if isinstance(title, dict):
+            ax.set_title(title.pop('t'), **title)
+        else:
+            ax.set_title(title)
+
     if not external_ax:
         plt.tight_layout()
     
@@ -951,7 +1252,7 @@ def plot_unique_number_of_cdr3(
         figsize=(16, 6)
     ):
     
-    fig, ax = plt.subplots(
+    fig, (ax1, ax2) = plt.subplots(
         1,
         ncols=2,
         figsize=figsize,
@@ -965,7 +1266,7 @@ def plot_unique_number_of_cdr3(
         y='n_unique_cdr3',
         hue='condition',
         palette=palette,
-        ax=ax[0],
+        ax=ax1,
         legend=False
     )
     
@@ -976,7 +1277,7 @@ def plot_unique_number_of_cdr3(
         hue='condition',
         showmeans=True,
         palette=palette,
-        ax=ax[1],
+        ax=ax2,
         legend=True
     )
 
@@ -986,11 +1287,13 @@ def plot_unique_number_of_cdr3(
         y='n_unique_cdr3',
         color='black',
         dodge=True,
-        ax=ax[1]
+        ax=ax2
     )
 
-    ax[0].tick_params(axis = 'x', rotation = 90)
-    ax[1].tick_params(axis = 'x', rotation = 90)
-    ax[1].legend(title = 'Condition', bbox_to_anchor = (1, 1))
+    ax1.tick_params(axis = 'x', rotation = 90)
+    ax2.tick_params(axis = 'x', rotation = 90)
+    ax2.legend(title = 'Condition', bbox_to_anchor = (1, 1))
     
-    return fig, ax
+    return fig, (ax1, ax2)
+
+
