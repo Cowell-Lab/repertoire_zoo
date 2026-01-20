@@ -1048,6 +1048,7 @@ def plot_junction_aa_length(
         df: pd.DataFrame,
         x_col:str='CDR3_LENGTH',
         y_col:str='CDR3_COUNT',
+        controls:list=[None],
         title:str|dict=None,
         hue_col:str='condition',
         palette:str='Set1',
@@ -1069,6 +1070,9 @@ def plot_junction_aa_length(
         - The x-variable column name. (Default: `CDR3_LENGTH`)
     y_col : str
         - The y-variable column name. (Default: `CDR3_COUNT`)
+    controls : list
+        - A list of control group names. This will display a baseline on the plot. If no controls are needed, 
+        then the default value of `[None]` is used.
     title : str | dict, optional
         Optional title for the axis. A dictionary can be passed to set other **kwargs for `ax.set_title()`.
         (optional, Default: `None`)
@@ -1103,6 +1107,20 @@ def plot_junction_aa_length(
         ax=ax,
         legend=legend
     )
+
+    if controls != [None]:
+        for control in controls:
+            sns.lineplot(
+                df[df['condition']==control],
+                x=x_col,
+                y=y_col,
+                label=control,
+                color=palette[control],
+                ls='-',
+                lw=2,
+                ax=ax
+            )
+
     if log_scale:
         ax.set_yscale('log')
         
