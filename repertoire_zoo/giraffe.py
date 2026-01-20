@@ -1099,7 +1099,7 @@ def plot_junction_aa_length(
         external_ax = True
     
     sns.barplot(
-        data=df,
+        data=df[~df['condition'].isin(controls)],
         x=x_col,
         y=y_col,
         hue=hue_col,
