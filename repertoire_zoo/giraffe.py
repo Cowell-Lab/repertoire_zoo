@@ -132,6 +132,7 @@ def plot_gene_usage_groups(
 
 def plot_duplicate_frequency(
         df:pd.DataFrame,
+        datapoints:pd.DataFrame=None,
         errorbar:str=None,
         figsize:tuple=(16,8),
         title:str|dict=None,
@@ -153,6 +154,8 @@ def plot_duplicate_frequency(
     df : pd.DataFrame
         - A Pandas DataFrame with columns `gene`, `N`, `duplicate_frequency_avg`,
         `duplicate_frequency_std`, `condition`
+    datapoints : pd.DataFrame
+        - When not `None`, the datapoints present will plot on top of the bar graph. (Default: `None`.)
     errorbar : str
         - Display the error bar using defined method: `sd`, `se`. `sd` is for the standard deviation
          while `se` reports the standard error. (Default: None.)
@@ -323,6 +326,19 @@ def plot_duplicate_frequency(
     if ylim[0] is not None or ylim[1] is not None:
         ax.set_ylim(bottom=ylim[0], top=ylim[1])
 
+    if datapoints is not None:
+        sns.stripplot(
+            datapoints,
+            x='gene',
+            y='duplicate_frequency',
+            hue='condition',
+            dodge=True,
+            palette=['k']*len(hue_order),
+            ax=ax,
+            alpha=0.6,
+            hue_order=hue_order,
+            legend=False
+        )
     return fig, ax
 
 def plot_ratio(

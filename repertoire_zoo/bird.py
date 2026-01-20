@@ -156,7 +156,9 @@ def load_gene_usage_group_data(
         level:str='gene',
         mode:str='proportion',
         productive:bool=True,
-        threshold:float=None
+        threshold:float=None,
+        datapoints:bool=False,
+        categories:list[str]=None
     ) -> pd.DataFrame:
     """
     Load gene usage statistical data for a single group.
@@ -178,6 +180,10 @@ def load_gene_usage_group_data(
         - The middle part of the filename path
     threshold : float
         - Define a duplicate frequency threshold to apear. Values are inclusive. (Default: `None`.)
+    datapoints : bool
+        - Return individual datapoints for groups instead of group average.
+    categories : list[str]
+        - Used when datapoints is True. A list of categories (genes).
 
     Returns
     -------
@@ -186,30 +192,61 @@ def load_gene_usage_group_data(
         `duplicate_frequency_avg`, `duplicate_frequency_std`, `condition`.
     """
     dfs = []
-    for group_id, condition_name, *_ in groups:
-        path = f"{repcalc_dir}{group_id}.{processing_stage}.group.{call_type}.tsv"
-        df = pd.read_csv(path, sep='\t')
-        df = df[(df['level']==level) & (df['mode']==mode) & (df['productive']==productive)]
-        df = df.loc[:,['gene', 'duplicate_frequency_avg', 'duplicate_frequency_std', 'N']]
-        df['condition'] = condition_name
-        dfs.append(df)
+    if not datapoints:
+        for group_id, condition_name, *_ in groups:
+            path = f"{repcalc_dir}{group_id}.{processing_stage}.group.{call_type}.tsv"
+            df = pd.read_csv(path, sep='\t')
+            df = df[(df['level']==level) & (df['mode']==mode) & (df['productive']==productive)]
+            df = df.loc[:,['gene', 'duplicate_frequency_avg', 'duplicate_frequency_std', 'N']]
+            df['condition'] = condition_name
+            dfs.append(df)
 
-    df_combined = pd.concat(dfs, ignore_index=True)
-    df_combined = df_combined.sort_values(by=['gene', 'condition'])
-    df_combined = df_combined.reset_index(drop=True)
+        df_combined = pd.concat(dfs, ignore_index=True)
+        df_combined = df_combined.sort_values(by=['gene', 'condition'])
+        df_combined = df_combined.reset_index(drop=True)
     
-    # reduce df by threshold
+        # reduce df by threshold
 
-    ## will keep the group if at least one value in 'gene' is not 0
-    # if threshold is not None and isinstance(threshold, float):
-    #     df_combined.loc[:, 'duplicate_frequency_avg'] = df_combined['duplicate_frequency_avg'].where(df_combined['duplicate_frequency_avg'] >= threshold, 0)
-    #     df_combined = df_combined.groupby('gene').filter(lambda g: not (g['duplicate_frequency_avg'] == 0).all())
+        ## will keep the group if at least one value in 'gene' is not 0
+        # if threshold is not None and isinstance(threshold, float):
+        #     df_combined.loc[:, 'duplicate_frequency_avg'] = df_combined['duplicate_frequency_avg'].where(df_combined['duplicate_frequency_avg'] >= threshold, 0)
+        #     df_combined = df_combined.groupby('gene').filter(lambda g: not (g['duplicate_frequency_avg'] == 0).all())
 
-    # will drop the group if all values of 'gene' in group are below threshold
-    if threshold is not None and isinstance(threshold, float):
-        df_combined = df_combined.groupby('gene').filter(
-            lambda g: (g['duplicate_frequency_avg'] >= threshold).any()
-        )
+        # will drop the group if all values of 'gene' in group are below threshold
+        if threshold is not None and isinstance(threshold, float):
+            df_combined = df_combined.groupby('gene').filter(
+                lambda g: (g['duplicate_frequency_avg'] >= threshold).any()
+            )
+    else:
+        for group in groups:
+            for rep_id in group[2]:
+                df = load_gene_usage_data(
+                    repcalc_dir=repcalc_dir,
+                    repertoire_id=rep_id,
+                    processing_stage=processing_stage,
+                    call_type=call_type,
+                    level=level,
+                    mode=mode,
+                    productive=productive
+                )
+                df['condition'] = [group[1]]*df.shape[0]
+                dfs.append(df)
+
+        df_combined = pd.concat(dfs)
+
+        ## will keep the group if at least one value in 'gene' is not 0
+        # if threshold is not None and isinstance(threshold, float):
+        #     df_points.loc[:, 'duplicate_frequency'] = df_points['duplicate_frequency'].where(df_points['duplicate_frequency'] >= threshold, 0)
+        #     df_points = df_points.groupby('gene').filter(lambda g: not (g['duplicate_frequency'] == 0).all())
+        
+        # will drop the group if all values of 'gene' in group are below threshold
+        if threshold is not None and isinstance(threshold, float):
+            df_combined = df_combined.groupby('gene').filter(
+                lambda g: (g['duplicate_frequency'] >= threshold).any()
+            )
+        
+        if categories:
+            df_combined = df_combined[df_combined['gene'].isin(categories)]
 
     return df_combined
 
