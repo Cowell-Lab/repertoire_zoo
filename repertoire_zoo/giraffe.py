@@ -390,8 +390,8 @@ def plot_ratio(
         palette = 'Set2'
     if hue is None:
         hue='repertoire_group_name'
-    if not split:
-        hue_order=None
+    # if not split:
+    #     hue_order=None
 
     # reduce df by threshold
 
@@ -427,7 +427,7 @@ def plot_ratio(
             y=region+'_avg',
             hue=hue,
             palette=palette,
-            # hue_order=hue_order,
+            hue_order=hue_order,
             order=categories if categories is not None else None,
             capsize=0.3,
             ax=ax,
