@@ -600,7 +600,7 @@ def plot_vj_chord_diagram(
         cmap=cmap,
         label_kws=dict(
             size=10,
-            r=115,
+            r=110,
             orientation='vertical'),
         link_kws=dict(
             direction=0,
@@ -628,7 +628,7 @@ def plot_vj_chord_diagram(
                 title['t'],
                 size=title.get('fontsize', 16),
                 deg=title.get('deg', 0),
-                r=title.get('r', 140)
+                r=title.get('r', title.get('y', 1.0)*125),
             )
 
     # if not external_ax:
