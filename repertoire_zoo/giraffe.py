@@ -832,6 +832,7 @@ def plot_diversity_curve(
         legend:bool|str='auto',
         legend_title:str=None,
         title:str=None,
+        estimator:str='mean',
         errorbar=None
     ) -> tuple[Figure, Axes]:
     """
@@ -880,6 +881,7 @@ def plot_diversity_curve(
         palette=palette,
         legend=legend,
         ax=ax,
+        estimator=estimator,
         errorbar=errorbar
     )
 
@@ -1000,6 +1002,7 @@ def plot_clonal_abundance(
         title:str=None,
         legend_title:str=None,
         hue=None,
+        estimator:str='mean',
         errorbar=None
     ) -> tuple[Figure, Axes]:
     """
@@ -1023,6 +1026,8 @@ def plot_clonal_abundance(
         - The title of the legend. (Default: `None`.)
     hue : str
         - The column in `df` to be used to split for groups. (Default: `None`.)
+    estimator : str
+        - Same as seaborn estimator for lineplot. Can use: `mean`, `median`, `min`, `max`. (Default: `mean`.)
     errorbar : str
         - The type of errorbar to use as currently defined by seaborn lineplot. (Default: `None`.)
 
@@ -1039,7 +1044,7 @@ def plot_clonal_abundance(
         fig = ax.get_figure()
         external_ax = True
 
-    sns.lineplot(data=df, x='rank', y=y_col, hue=hue, ax=ax, errorbar=errorbar)
+    sns.lineplot(data=df, x='rank', y=y_col, hue=hue, ax=ax, estimator=estimator, errorbar=errorbar)
     
     ax.set_xscale('log')
 
@@ -1072,7 +1077,8 @@ def plot_junction_aa_length(
         figsize:tuple[int,int]=(18, 8),
         log_scale:bool=False,
         aa_range:tuple[int,int]=(6, 29),
-        ax:Axes=None
+        ax:Axes=None,
+        errorbar:str=None
     ) -> tuple[Figure, Axes]:
     """
     Plot grouped bar chart with error bars from combined dataframe.
@@ -1102,6 +1108,8 @@ def plot_junction_aa_length(
         - Place the y axis into a log scale. (Default: `False`)
     aa_range : tuple[int,int]
         - The range of amino acid positions to display. (Default: `(6,29)`.)
+    errorbar : str
+        - Seaborn errorbar method used from: `se`, `sd`, `pi`, `ci`. See seaborn documentation for further details. (Default: `None`)
     Returns
     -------
     fig, ax : tuple
@@ -1121,7 +1129,8 @@ def plot_junction_aa_length(
         hue=hue_col,
         palette=palette,
         ax=ax,
-        legend=legend
+        legend=legend,
+        errorbar=errorbar
     )
 
     if controls != [None]:
@@ -1134,7 +1143,8 @@ def plot_junction_aa_length(
                 color=palette[control],
                 ls='-',
                 lw=2,
-                ax=ax
+                ax=ax,
+                errorbar=errorbar
             )
 
     if log_scale:
