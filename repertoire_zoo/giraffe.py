@@ -755,10 +755,10 @@ def plot_mutational_hedgehog(
         # Add text to indicate group
         ax.text(
             np.mean(x1),
-            -3*delta,
+            -6*delta,
             region,
             color="black",
-            fontsize=10,
+            fontsize=9,
             fontweight="bold",
             ha="center",
             va="center"
@@ -767,9 +767,9 @@ def plot_mutational_hedgehog(
         # Min index label slightly left and below first bar
         ax.text(
             x1[0],
-            -2*delta,
+            -3*delta,
             str(min_idx),
-            size=9,
+            size=8,
             alpha=1,
             ha='center',
             va='top'
@@ -777,9 +777,9 @@ def plot_mutational_hedgehog(
         # Max index label slightly right and below last bar
         ax.text(
             x1[-1],
-            -2*delta,
+            -3*delta,
             str(max_idx),
-            size=9,
+            size=8,
             alpha=1,
             ha='center',
             va='top'
