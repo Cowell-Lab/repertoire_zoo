@@ -17,6 +17,7 @@ setup(
     packages=find_packages(),
     python_requires='>=3.6',
     license='GPLv3',
+    licesnse_files=("LICENSE"),
     install_requires=[
         'airr',
         'matplotlib',
