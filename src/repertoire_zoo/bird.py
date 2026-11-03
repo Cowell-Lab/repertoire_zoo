@@ -348,7 +348,7 @@ def load_and_prepare_data_subjects(
 def load_and_prepare_data_junction_aa(
         repcalc_dir:str,
         groups:list=None,
-        processing_stage:str='.igblast.makedb.allele.clone.group.',
+        processing_stage:str='igblast.makedb.allele.clone',
         call_type:str='junction_aa_length'
     ) -> pd.DataFrame:
     """
@@ -373,7 +373,7 @@ def load_and_prepare_data_junction_aa(
     dfs = []
     if groups is not None:
         for group_id, condition_name, *_ in groups:
-            path = f"{repcalc_dir}{group_id}{processing_stage}{call_type}.tsv"
+            path = f"{repcalc_dir}{group_id}.{processing_stage}.group.{call_type}.tsv"
             df = pd.read_csv(path, sep='\t')
             df = df.loc[:, ['CDR3_LENGTH', 'CDR3_COUNT', 'CDR3_RELATIVE']].copy()
             df['condition'] = condition_name
@@ -393,7 +393,7 @@ def load_and_prepare_data_vj_combo(
         level:str='subgroup|subgroup',
         mode:str='proportion', 
         productive:str=True,
-        processing_stage:str='.igblast.makedb.allele.clone.group.'
+        processing_stage:str='igblast.makedb.allele.clone'
     ) -> pd.DataFrame:
     """
     Load and prepare data to be used in the VJ Combo Circos Plot
@@ -429,7 +429,7 @@ def load_and_prepare_data_vj_combo(
     if group_id is not None:
         repertoire_groups = [(group_id, group_id)]
     for group_id, group_name, *_ in repertoire_groups:
-        path = f"{repcalc_dir}{group_id}{processing_stage}{combo_type}.tsv"
+        path = f"{repcalc_dir}{group_id}.{processing_stage}.group.{combo_type}.tsv"
         df = pd.read_csv(path, sep='\t')
         df['condition'] = [group_name]*df.shape[0]
         dfs.append(df)
@@ -652,7 +652,7 @@ def load_and_prepare_mutation_data(
         group_id: str = None,
         repertoire_groups: list[tuple[str, str]] = None,
         trim_codons: int = 16,
-        processing_stage: str = 'gene.mutations'
+        processing_stage: str = 'igblast.makedb.gene.clone'
     ) -> pd.DataFrame:
     """
     Load and prepare mutation data for hedgehog plots
@@ -676,7 +676,7 @@ def load_and_prepare_mutation_data(
         - Columns: `place`, `region`, `value`, `se`, `se_start`, `se_end`, `group_name`
     """
     # --- Load the data ---
-    file_path = f"{mutation_data_dir}{processing_stage}.repertoire_group.frequency.mutational_report.csv"
+    file_path = f"{mutation_data_dir}{processing_stage}.mutations.repertoire_group.frequency.mutational_report.csv"
     group_muts = pd.read_csv(file_path, index_col='repertoire_group_id')
 
     # --- Helper functions ---
